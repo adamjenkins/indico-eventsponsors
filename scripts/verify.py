@@ -169,6 +169,55 @@ with sync_playwright() as pw:
     page.screenshot(path=f'{OUT}/sponsors-rendered.png', full_page=True)
     check('no JS errors on the display page', not errors, '; '.join(errors[:2]))
 
+    print('\n== Nothing overlaps ==')
+    # A row shorter than its own contents is how a logo ends up drawn on top of
+    # the sponsor below it. Measured rather than looked at: the failure is
+    # invisible until an image happens to be tall enough.
+    geometry = page.evaluate('''() => {
+        const rows = [...document.querySelectorAll('.evsp-item')].map(el => {
+            const r = el.getBoundingClientRect();
+            return {tier: el.closest('.evsp-tier').dataset.tier, top: r.top + scrollY,
+                    bottom: r.bottom + scrollY, height: r.height, content: el.scrollHeight};
+        });
+        let overlaps = 0;
+        for (let i = 1; i < rows.length; i++) {
+            if (rows[i].top < rows[i - 1].bottom - 1) { overlaps++; }
+        }
+        return {rows, clipped: rows.filter(r => r.content > r.height + 1), overlaps};
+    }''')
+    check('no row is shorter than what is inside it', not geometry['clipped'],
+          str(geometry['clipped']))
+    check('no row starts before the one above it ends', geometry['overlaps'] == 0,
+          f"{geometry['overlaps']} overlaps in {len(geometry['rows'])} rows")
+    check('the block ends above whatever follows it', page.evaluate('''() => {
+        const block = document.querySelector('.evsp');
+        const next = block.nextElementSibling;
+        return !next || block.getBoundingClientRect().bottom <= next.getBoundingClientRect().top + 1;
+    }'''))
+
+    print('\n== Display inline ==')
+    page.goto(f'{BASE}/event/{EVENT}/manage/sponsors/settings', wait_until='networkidle')
+    page.locator('tr', has_text='sponsors_full').locator('a.icon-edit').first.click()
+    page.wait_for_load_state('networkidle')
+    headers = [h.strip() for h in page.locator('table thead th').all_inner_texts()]
+    check('the matrix offers it per tier', 'Display inline' in headers, str(headers))
+    boxes = page.locator('input[name$="_inline"]')
+    for index in range(boxes.count()):
+        # Every tier but the first, so the mixed arrangement the option exists
+        # for is what gets checked.
+        (boxes.nth(index).uncheck if index == 0 else boxes.nth(index).check)(force=True)
+    page.click('input[type=submit]')
+    page.wait_for_load_state('networkidle')
+    page.goto(f'{BASE}/event/{EVENT}/', wait_until='networkidle')
+    page.wait_for_timeout(600)
+    rows = page.evaluate('''() => [...document.querySelectorAll('.evsp-tier')].map(t => [
+        t.dataset.tier, t.classList.contains('evsp-inline'),
+        getComputedStyle(t).flexDirection, getComputedStyle(t).flexWrap])''')
+    check('a template can mix a stacked tier with inline ones',
+          len(rows) >= 2 and rows[0][1] is False and rows[1][1] is True, str(rows))
+    check('an inline tier lays out as a wrapping row',
+          all(r[2] == 'row' and r[3] == 'wrap' for r in rows if r[1]), str(rows))
+
     print('\n== The campaign URL overrides the homepage ==')
     page.goto(f'{BASE}/event/{EVENT}/manage/sponsors/', wait_until='networkidle')
     page.locator('table tbody tr a.icon-edit').first.click()

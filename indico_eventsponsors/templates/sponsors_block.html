@@ -11,7 +11,7 @@
 {%- if with_styles %}<style>{% include 'eventsponsors:sponsors.css' %}</style>{% endif %}
 <div class="evsp evsp-{{ template.layout }}">
     {%- for group in groups %}
-    <div class="evsp-tier" data-tier="{{ group.tier.name }}">
+    <div class="evsp-tier{{ ' evsp-inline' if group.fields.inline }}" data-tier="{{ group.tier.name }}">
         {%- for sponsor in group.sponsors %}
             {%- set fields = group.fields %}
             {%- set image = sponsor_image(sponsor, fields) %}

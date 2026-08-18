@@ -10,7 +10,7 @@ from werkzeug.datastructures import FileStorage
 from indico.core.db import db
 
 from indico_eventsponsors.models.sponsors import Sponsor, SponsorLogo
-from indico_eventsponsors.models.templates import SponsorTemplate, SponsorTemplateTier
+from indico_eventsponsors.models.templates import TEMPLATE_FIELDS, SponsorTemplate, SponsorTemplateTier
 from indico_eventsponsors.models.tiers import SponsorTier
 
 
@@ -91,6 +91,6 @@ def sync_template_tiers(template, tiers, matrix_form):
         if settings is None:
             settings = SponsorTemplateTier(template_id=template.id, tier_id=tier.id)
             db.session.add(settings)
-        for field in ('show_logo', 'show_square_logo', 'show_name', 'show_tagline', 'show_description', 'linked'):
+        for field, _label in TEMPLATE_FIELDS:
             setattr(settings, field, bool(matrix_form[f'tier_{tier.id}_{field}'].data))
     db.session.flush()

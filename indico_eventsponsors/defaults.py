@@ -17,7 +17,7 @@ there, and are the event's own from that moment on.
 from indico.core.db import db
 
 from indico_eventsponsors.models.sponsors import Sponsor  # noqa: F401  (imported so the mapper is configured)
-from indico_eventsponsors.models.templates import SponsorTemplate, SponsorTemplateTier
+from indico_eventsponsors.models.templates import TEMPLATE_FIELDS, SponsorTemplate, SponsorTemplateTier
 from indico_eventsponsors.models.tiers import SponsorTier
 
 
@@ -103,8 +103,7 @@ def seed_event(event, tiers, templates):
         for rank, tier in enumerate(created):
             shown = fields.get(min(rank, highest_rank), ())
             settings = SponsorTemplateTier(template_id=template.id, tier_id=tier.id)
-            for field in ('show_logo', 'show_square_logo', 'show_name', 'show_tagline', 'show_description',
-                          'linked'):
+            for field, _label in TEMPLATE_FIELDS:
                 setattr(settings, field, field in shown)
             db.session.add(settings)
     db.session.flush()

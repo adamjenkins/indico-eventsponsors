@@ -14,7 +14,8 @@ such as `{{sponsors_full}}` appears.
   given, so the same block works in a page column, a sidebar or a phone.
 - **Shortcodes are templates you edit.** A template is one shortcode, and
   decides — per tier — which of the logo, square logo, name, one-liner and
-  paragraph appear, and whether they link. So `{{sponsors_full}}` might give
+  paragraph appear, whether they link, and whether that tier's sponsors sit
+  side by side and wrap ("display inline") or take a row each. So `{{sponsors_full}}` might give
   Gold sponsors a logo and a paragraph while Silver sponsors get a logo and a
   name, and `{{sponsors_logoonly}}` gives everyone just a logo.
 - A tier the template shows nothing for does not appear in that block at all.

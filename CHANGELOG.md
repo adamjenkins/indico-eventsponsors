@@ -5,6 +5,11 @@ All notable changes to the Event Sponsors plugin are documented here.
 ## [Unreleased]
 
 ### Added
+- **"Display inline"** in a template's per-tier matrix: that tier's sponsors sit
+  side by side and wrap onto further rows, rather than one per row. Per tier
+  rather than per template on purpose — the usual arrangement is a headline tier
+  with a row to itself and lower tiers flowing together, and that is one
+  template.
 - First working version. Sponsor records per event — name, one-line
   description, full paragraph, homepage, campaign link with an override for
   links, active/inactive, tier, and two optional images.
@@ -34,6 +39,15 @@ All notable changes to the Event Sponsors plugin are documented here.
   makes a template the app's. Off by default: the top of a phone screen is the
   space an attendee came for, so a sponsor block there has to be chosen rather
   than inherited.
+
+### Fixed
+- **Sponsors could overlap each other on the page.** In the list layout a row
+  was allowed to shrink below the height of the logo inside it, so a tall logo
+  was drawn over the next sponsor and over whatever followed the block. Two
+  causes, both inherited from rules the grid layout needs: `flex-wrap: wrap`
+  turned the column into a multi-line flex container, which shrinks its items
+  rather than growing, and `flex-shrink: 1` let it. Only showed up once real
+  logos with real aspect ratios were uploaded.
 
 ### Notes on the shortcode mechanism
 - Shortcodes are expanded in the **body** of an event's display pages only.

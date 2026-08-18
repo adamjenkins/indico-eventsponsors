@@ -212,7 +212,7 @@ class RHSponsorsData(RHDisplayEventBase):
                       'max_logo_pct': template.max_logo_pct,
                       'above_schedule': template.app_above_schedule},
             tiers=[{'id': g['tier'].id, 'name': g['tier'].name, 'size': g['tier'].size,
-                    'width_pct': g['width_pct']} for g in groups],
+                    'width_pct': g['width_pct'], 'inline': bool(g['fields'].inline)} for g in groups],
             sponsors=[_serialize_sponsor(s, g) for g in groups for s in g['sponsors']],
         )
 

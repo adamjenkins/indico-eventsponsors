@@ -148,3 +148,25 @@ def test_the_app_placement_defaults_to_below_the_schedule(db, dummy_event):
     # The top of a phone screen is the space the attendee came for. Putting a
     # sponsor block there has to be a decision, not something inherited.
     assert template.app_above_schedule is False
+
+
+def test_a_tier_with_only_presentation_fields_shows_nothing(db, sponsored_event):
+    event, template, gold, _silver = sponsored_event
+    settings = next(ts for ts in template.tier_settings if ts.tier_id == gold.id)
+    settings.show_name = False
+    settings.linked = True
+    settings.inline = True
+    db.session.flush()
+    # "Link it" and "display inline" say how to show a sponsor, not whether to.
+    # A tier with only those ticked has nothing to draw.
+    assert not settings.shows_anything
+    assert [g['tier'].name for g in build_groups(event, template)] == ['Silver']
+
+
+def test_inline_marks_the_tier_in_the_rendered_block(db, sponsored_event):
+    event, template, gold, _silver = sponsored_event
+    next(ts for ts in template.tier_settings if ts.tier_id == gold.id).inline = True
+    db.session.flush()
+    html = expand('{{sponsors_full}}', event)
+    assert 'evsp-tier evsp-inline" data-tier="Gold"' in html
+    assert 'evsp-tier" data-tier="Silver"' in html

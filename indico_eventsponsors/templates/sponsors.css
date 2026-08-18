@@ -31,11 +31,51 @@
    own contents. The logo widths are percentages of the row, so rows of
    different widths would give the same tier different logo sizes depending on
    how much text its sponsors happened to have. */
-.evsp-list .evsp-tier { flex-direction: column; align-items: stretch; gap: 1.2em; }
-.evsp-list .evsp-item { display: flex; align-items: flex-start; gap: 1.2em; flex: 1 1 auto; max-width: none; }
+.evsp-list .evsp-tier { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 1.2em; }
+
+/* `flex: 0 0 auto`, not `1 1 auto`. A row must never be shrunk below the logo
+   inside it: the logo's height comes from its own width and the image's aspect
+   ratio, and a shrunk row leaves it overflowing on top of the next sponsor.
+   `flex-wrap: nowrap` above is the other half of the same fix -- the base rule
+   wraps, which the grid layout needs and which turns this column into a
+   multi-line container whose items get shrunk instead of the container growing. */
+.evsp-list .evsp-item { display: flex; align-items: flex-start; gap: 1.2em; flex: 0 0 auto; max-width: none; }
 .evsp-list .evsp-logo { flex: 0 0 var(--evsp-w); max-width: var(--evsp-w); min-width: var(--evsp-min); }
 .evsp-list .evsp-text { flex: 1 1 auto; min-width: 0; }
 .evsp-list .evsp-name { margin-top: 0; }
+
+/* "Display inline", per tier: side by side, wrapping onto further rows as
+   needed. In the grid layout that is already what happens, so this changes
+   nothing there; in the list layout it lets one template give a headline tier a
+   row of its own and let the tiers below it flow together.
+
+   The row-direction rules are restated rather than inherited because the list
+   layout has already turned this container into a column. */
+.evsp .evsp-tier.evsp-inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: center;
+}
+
+.evsp .evsp-tier.evsp-inline .evsp-item {
+  display: block;
+  flex: 0 1 var(--evsp-w);
+  max-width: var(--evsp-w);
+  min-width: var(--evsp-min);
+}
+
+/* The logo is the whole item again, not a fixed column beside text. */
+.evsp .evsp-tier.evsp-inline .evsp-logo {
+  flex: none;
+  max-width: none;
+  min-width: 0;
+}
+
+.evsp .evsp-tier.evsp-inline .evsp-description {
+  text-align: left;
+}
 
 @media print {
   .evsp a { text-decoration: none; }

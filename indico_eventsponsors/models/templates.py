@@ -18,7 +18,13 @@ TEMPLATE_FIELDS = (
     ('show_tagline', 'One-line description'),
     ('show_description', 'Full description'),
     ('linked', 'Link to the sponsor'),
+    ('inline', 'Display inline'),
 )
+
+#: Fields that decide *presentation* rather than which of a sponsor's details
+#: appear. A tier with only these ticked shows nothing and is not rendered --
+#: see `SponsorTemplateTier.shows_anything`.
+PRESENTATION_FIELDS = frozenset({'linked', 'inline'})
 
 LAYOUTS = (
     ('grid', 'Grid -- logos side by side, wrapping'),
@@ -102,6 +108,12 @@ class SponsorTemplateTier(db.Model):
     show_description = db.Column(db.Boolean, nullable=False, default=False)
     linked = db.Column(db.Boolean, nullable=False, default=True)
 
+    #: Lay this tier's sponsors out side by side, wrapping onto further rows as
+    #: needed, rather than one per row. Per tier and not per template on
+    #: purpose: the usual arrangement is a headline tier that gets a row to
+    #: itself and lower tiers that flow together, which is one template.
+    inline = db.Column(db.Boolean, nullable=False, default=False)
+
     template = db.relationship('SponsorTemplate', lazy=False,
                                backref=db.backref('tier_settings', lazy=False, cascade='all, delete-orphan'))
     tier = db.relationship('SponsorTier', lazy=False,
@@ -109,7 +121,8 @@ class SponsorTemplateTier(db.Model):
 
     @property
     def shows_anything(self):
-        return any(getattr(self, field) for field, _label in TEMPLATE_FIELDS if field != 'linked')
+        return any(getattr(self, field) for field, _label in TEMPLATE_FIELDS
+                   if field not in PRESENTATION_FIELDS)
 
     def __repr__(self):
         return format_repr(self, 'id', 'template_id', 'tier_id')
