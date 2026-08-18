@@ -54,23 +54,55 @@
 .evsp .evsp-tier.evsp-inline {
   flex-direction: row;
   flex-wrap: wrap;
-  align-items: flex-start;
   justify-content: center;
   text-align: center;
+
+  /* `stretch`, so every card on a row is the height of that row rather than of
+     its own logo. Logos of one tier are drawn at one width and their heights
+     follow the artwork, so without this a row of sponsors hangs from the top at
+     ragged depths. */
+  align-items: stretch;
 }
 
 .evsp .evsp-tier.evsp-inline .evsp-item {
-  display: block;
+  display: flex;
+  flex-direction: column;
   flex: 0 1 var(--evsp-w);
   max-width: var(--evsp-w);
   min-width: var(--evsp-min);
 }
 
-/* The logo is the whole item again, not a fixed column beside text. */
+/* Every logo gets the same box, two wide by one tall, and the artwork is fitted
+   inside it standing on the floor.
+
+   Anchoring the *card* to the bottom is not enough and was the first attempt:
+   the text under each logo wraps to a different number of lines, so the logos
+   ended up at whatever height that text left them. A box with a shape of its
+   own is what actually gives a row of mixed artwork one line to stand on -- the
+   same thing a printed sponsor wall does.
+
+   `contain` rather than `cover`: a sponsor's logo is not a photograph and must
+   never be cropped or stretched to fill a shape it was not drawn for. The cost
+   is that a tall logo is drawn smaller than a wide one of the same tier, which
+   is the price of them sharing a line at all. */
 .evsp .evsp-tier.evsp-inline .evsp-logo {
-  flex: none;
+  aspect-ratio: 2 / 1;
   max-width: none;
   min-width: 0;
+  flex: 0 0 auto;
+
+  /* Load-bearing. A flex item in a column container gets `min-height: auto`,
+     which means "never smaller than your contents" -- and the contents here are
+     an image with an intrinsic height. Without this the tall artwork simply
+     pushes the box past its own aspect ratio and the row is ragged again. */
+  min-height: 0;
+}
+
+.evsp .evsp-tier.evsp-inline .evsp-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
 }
 
 .evsp .evsp-tier.evsp-inline .evsp-description {

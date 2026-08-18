@@ -140,13 +140,20 @@ with sync_playwright() as pw:
         check('the stylesheet arrived with the block',
               page.evaluate("() => getComputedStyle(document.querySelector('.evsp-tier')).display === 'flex'"))
         by_tier = dict(widths)
-        # Platinum 100, Gold 70, Silver 45: the ratios of the drawn logos must be
-        # the ratios of the tier sizes, whatever the page is actually wide. Asserted
-        # unconditionally -- a missing tier is a failure, not a reason to skip.
-        for name, expected in (('Gold', 0.70), ('Silver', 0.45)):
-            top, other = by_tier.get('Platinum'), by_tier.get(name)
+        # The ratios of the drawn logos must be the ratios of the tier sizes,
+        # whatever the page is actually wide. The sizes are read from the event
+        # rather than written here: hardcoding them made this fail the moment
+        # somebody edited a tier, which is not a fault worth reporting.
+        sizes = page.evaluate(
+            'async (id) => (await (await fetch(`/event/${id}/sponsors/data`)).json()).tiers',
+            EVENT)
+        sizes = {tier['name']: tier['size'] for tier in sizes}
+        biggest = max(sizes, key=lambda name: sizes[name]) if sizes else None
+        for name, size in sorted(sizes.items(), key=lambda item: -item[1])[1:]:
+            expected = size / sizes[biggest]
+            top, other = by_tier.get(biggest), by_tier.get(name)
             ratio = (other / top) if top and other else None
-            check(f'a {name} logo is {expected:.2f} the width of a Platinum one',
+            check(f'a {name} logo is {expected:.2f} the width of a {biggest} one',
                   ratio is not None and abs(ratio - expected) < 0.02,
                   f'{ratio:.3f} ({by_tier})' if ratio else f'missing a tier: {by_tier}')
         # Adaptivity is the claim that the block is sized by its container and
@@ -217,6 +224,44 @@ with sync_playwright() as pw:
           len(rows) >= 2 and rows[0][1] is False and rows[1][1] is True, str(rows))
     check('an inline tier lays out as a wrapping row',
           all(r[2] == 'row' and r[3] == 'wrap' for r in rows if r[1]), str(rows))
+
+    print('\n== Inline rows share a line ==')
+    # A box of the right height proves nothing if the picture hangs out of it,
+    # which is exactly what happened once and passed a weaker check.
+    alignment = page.evaluate('''() => {
+        const rows = new Map();
+        for (const card of document.querySelectorAll('.evsp-inline .evsp-item')) {
+            const key = Math.round((card.getBoundingClientRect().top + scrollY) / 20);
+            if (!rows.has(key)) { rows.set(key, []); }
+            const box = card.querySelector('.evsp-logo');
+            if (box) { rows.get(key).push(box.getBoundingClientRect()); }
+        }
+        const lines = [...rows.values()].filter(r => r.length > 1).map(r => ({
+            count: r.length,
+            bottomSpread: Math.max(...r.map(b => b.bottom)) - Math.min(...r.map(b => b.bottom)),
+            heightSpread: Math.max(...r.map(b => b.height)) - Math.min(...r.map(b => b.height)),
+        }));
+        const escaped = [];
+        for (const box of document.querySelectorAll('.evsp-inline .evsp-logo')) {
+            const img = box.querySelector('img');
+            if (!img) { continue; }
+            const b = box.getBoundingClientRect(), i = img.getBoundingClientRect();
+            if (i.bottom > b.bottom + 1 || i.top < b.top - 1) { escaped.push(Math.round(i.height)); }
+        }
+        const shapes = [...document.querySelectorAll('.evsp-inline .evsp-logo img')]
+            .map(i => Math.round((i.naturalWidth / i.naturalHeight) * 100) / 100);
+        return {lines, escaped, shapes: [...new Set(shapes)]};
+    }''')
+    if not alignment['lines']:
+        print('  --   no inline tier has two sponsors on a row; skipping the alignment checks')
+    else:
+        check('every logo box on a row is the same height',
+              all(line['heightSpread'] <= 1 for line in alignment['lines']), str(alignment['lines']))
+        check('and they stand on one line',
+              all(line['bottomSpread'] <= 1 for line in alignment['lines']), str(alignment['lines']))
+        check('the artwork stays inside its box', not alignment['escaped'], str(alignment['escaped']))
+        check('and the shapes really do differ, so this proves something',
+              len(alignment['shapes']) >= 2, str(alignment['shapes']))
 
     print('\n== The campaign URL overrides the homepage ==')
     page.goto(f'{BASE}/event/{EVENT}/manage/sponsors/', wait_until='networkidle')

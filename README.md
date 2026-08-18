@@ -15,7 +15,9 @@ such as `{{sponsors_full}}` appears.
 - **Shortcodes are templates you edit.** A template is one shortcode, and
   decides — per tier — which of the logo, square logo, name, one-liner and
   paragraph appear, whether they link, and whether that tier's sponsors sit
-  side by side and wrap ("display inline") or take a row each. So `{{sponsors_full}}` might give
+  side by side and wrap ("display inline") or take a row each. Inline logos are
+  drawn into a box of one shape and fitted inside it, so a row of mixed artwork
+  stands on a single line. So `{{sponsors_full}}` might give
   Gold sponsors a logo and a paragraph while Silver sponsors get a logo and a
   name, and `{{sponsors_logoonly}}` gives everyone just a logo.
 - A tier the template shows nothing for does not appear in that block at all.

@@ -41,6 +41,14 @@ All notable changes to the Event Sponsors plugin are documented here.
   than inherited.
 
 ### Fixed
+- **Inline logos now share a line.** Every logo in an inline tier is drawn into
+  a box of the same shape, with the artwork fitted inside it standing on the
+  floor — so a row of mixed proportions reads as a row. Anchoring the cards to
+  the bottom was not enough: the text under each logo wraps to a different
+  number of lines and left the logos wherever that text put them. The artwork is
+  fitted, never cropped or stretched; the cost is that a tall logo is drawn
+  smaller than a wide one of the same tier, which is the price of them sharing a
+  line at all.
 - **Sponsors could overlap each other on the page.** In the list layout a row
   was allowed to shrink below the height of the logo inside it, so a tall logo
   was drawn over the next sponsor and over whatever followed the block. Two
