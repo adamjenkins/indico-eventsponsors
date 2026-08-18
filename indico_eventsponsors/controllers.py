@@ -20,7 +20,7 @@ from indico_eventsponsors.models.templates import TEMPLATE_FIELDS, SponsorTempla
 from indico_eventsponsors.models.tiers import SponsorTier
 from indico_eventsponsors.rendering import build_groups, logo_url
 from indico_eventsponsors.util import (apply_logo_fields, delete_logo, event_sponsors, event_templates, event_tiers,
-                                       sync_template_tiers)
+                                       format_contribution_ids, sync_contributions, sync_template_tiers)
 from indico_eventsponsors.views import WPManageSponsors
 
 
@@ -43,9 +43,9 @@ class RHSponsorCreate(RHSponsorsManageBase):
         form = SponsorForm(event=self.event, is_active=True)
         if form.validate_on_submit():
             sponsor = Sponsor(event_id=self.event.id)
+            # `apply_sponsor_form` adds and flushes it: the contribution
+            # associations need a sponsor row to point at.
             self._apply(form, sponsor)
-            db.session.add(sponsor)
-            db.session.flush()
             flash(_('Sponsor added.'), 'success')
             return redirect(url_for_plugin('eventsponsors.manage', self.event))
         return WPManageSponsors.render_template('edit_sponsor.html', self.event, form=form, sponsor=None)
@@ -63,7 +63,8 @@ class RHSponsorEdit(RHSponsorsManageBase):
 
     def _process(self):
         form = SponsorForm(event=self.event, obj=self.sponsor,
-                           tier_id=self.sponsor.tier_id or 0)
+                           tier_id=self.sponsor.tier_id or 0,
+                           contribution_ids=format_contribution_ids(self.event, self.sponsor.linked_contribution_ids))
         if form.validate_on_submit():
             apply_sponsor_form(self.event, form, self.sponsor)
             flash(_('Sponsor updated.'), 'success')
@@ -123,7 +124,15 @@ class RHSponsorLogo(RHDisplayEventBase):
             raise NotFound
 
     def _process(self):
-        return self.logo.send()
+        from indico.core.storage.backend import StorageError
+        try:
+            return self.logo.send()
+        except StorageError:
+            # The row outliving its file is possible -- storage is not
+            # transactional -- and when it happens the honest answer is that
+            # this image is not here. A 404 renders as a broken image; letting
+            # the StorageError through renders as a broken page.
+            raise NotFound
 
 
 class RHManageSettings(RHSponsorsManageBase):
@@ -226,6 +235,9 @@ def _serialize_sponsor(sponsor, group):
         'tagline': sponsor.tagline,
         'description': sponsor.description,
         'url': sponsor.link_url if fields.linked else None,
+        # Global contribution ids, not the friendly ones the manager typed: this
+        # is what a client matches against in the schedule payload.
+        'contribution_ids': sponsor.linked_contribution_ids,
         'logo_url': logo_url(sponsor.logo) if sponsor.logo else None,
         'square_logo_url': logo_url(sponsor.square_logo) if sponsor.square_logo else None,
         'show': {field: bool(getattr(fields, field)) for field, _label in TEMPLATE_FIELDS},
@@ -233,9 +245,15 @@ def _serialize_sponsor(sponsor, group):
 
 
 def apply_sponsor_form(event, form, sponsor):
-    form.populate_obj(sponsor, skip={'logo', 'square_logo', 'delete_logo', 'delete_square_logo', 'tier_id'})
+    form.populate_obj(sponsor, skip={'logo', 'square_logo', 'delete_logo', 'delete_square_logo', 'tier_id',
+                                     'contribution_ids'})
     sponsor.tier_id = form.tier_id.data or None
     apply_logo_fields(event, sponsor, form)
+    if sponsor.id is None:
+        # The associations need a sponsor row to point at.
+        db.session.add(sponsor)
+        db.session.flush()
+    sync_contributions(sponsor, form.resolved_contribution_ids)
 
 
 def _edit_template(rh, template):

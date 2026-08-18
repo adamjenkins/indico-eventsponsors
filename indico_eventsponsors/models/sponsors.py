@@ -48,6 +48,31 @@ class SponsorLogo(StoredFileMixin, db.Model):
         return format_repr(self, 'id', 'event_id', _text=self.filename)
 
 
+class SponsorContribution(db.Model):
+    """A sponsor attached to one contribution.
+
+    A real table rather than a list of ids on the sponsor, so a contribution
+    that is deleted takes its associations with it instead of leaving a number
+    pointing at nothing. Many-to-many in both directions: a talk can have more
+    than one sponsor, and a sponsor usually has more than one talk.
+    """
+
+    __tablename__ = 'sponsor_contributions'
+    __table_args__ = (db.UniqueConstraint('sponsor_id', 'contribution_id'),
+                      {'schema': 'plugin_eventsponsors'})
+
+    id = db.Column(db.Integer, primary_key=True)
+    sponsor_id = db.Column(db.Integer, db.ForeignKey('plugin_eventsponsors.sponsors.id', ondelete='CASCADE'),
+                           nullable=False, index=True)
+    contribution_id = db.Column(db.Integer, db.ForeignKey('events.contributions.id', ondelete='CASCADE'),
+                                nullable=False, index=True)
+
+    contribution = db.relationship('Contribution', lazy=True)
+
+    def __repr__(self):
+        return format_repr(self, 'id', 'sponsor_id', 'contribution_id')
+
+
 class Sponsor(db.Model):
     """One sponsor of one event."""
 
@@ -86,6 +111,21 @@ class Sponsor(db.Model):
     tier = db.relationship('SponsorTier', lazy=False, backref=db.backref('sponsors', lazy='dynamic'))
     logo = db.relationship('SponsorLogo', lazy=False, foreign_keys=logo_id)
     square_logo = db.relationship('SponsorLogo', lazy=False, foreign_keys=square_logo_id)
+    contribution_links = db.relationship('SponsorContribution', lazy=True, cascade='all, delete-orphan',
+                                         backref=db.backref('sponsor', lazy=True))
+
+    @property
+    def linked_contribution_ids(self):
+        """The contributions this sponsor is attached to, as global ids.
+
+        Deliberately not named `contribution_ids`: the sponsor form has a field
+        by that name holding the manager's comma-separated text, and WTForms
+        fills a field from the object it was given in preference to anything
+        passed alongside it. With both called the same thing the box came back
+        showing a Python list of global ids instead of the numbers that were
+        typed into it.
+        """
+        return sorted(link.contribution_id for link in self.contribution_links)
 
     @property
     def locator(self):

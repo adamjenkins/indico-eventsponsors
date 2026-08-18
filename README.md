@@ -22,6 +22,9 @@ such as `{{sponsors_full}}` appears.
   name, and `{{sponsors_logoonly}}` gives everyone just a logo.
 - A tier the template shows nothing for does not appear in that block at all.
   That is how a template is limited to its top tiers.
+- A sponsor can be **attached to particular contributions** by listing their
+  numbers — the ones shown in the event's contribution list. The phone app then
+  draws that sponsor's logo small in the corner of those talks.
 - One template can be marked as the **phone app's**, and is what the app
   renders — either above the day's talks or below them, as a second switch
   decides. Below by default: the top of a phone screen is the space an attendee

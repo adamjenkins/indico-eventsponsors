@@ -184,3 +184,59 @@ def test_the_inlined_stylesheet_carries_no_comments(sponsored_event):
     assert 'This file is part of' not in css
     assert '.evsp-tier' in css and 'flex' in css
     assert '/*' not in expand('{{sponsors_full}}', event)
+
+
+def test_contribution_ids_are_read_as_friendly_ids(db, dummy_event, dummy_contribution):
+    from indico_eventsponsors.util import parse_contribution_ids
+
+    db.session.flush()
+    # The number a manager can see is the friendly one, so that is what the box
+    # reads first -- and it is a different number from the global id.
+    found, unknown = parse_contribution_ids(dummy_event, str(dummy_contribution.friendly_id))
+    assert found == [dummy_contribution.id]
+    assert not unknown
+
+
+def test_a_global_id_is_accepted_too(db, dummy_event, dummy_contribution):
+    from indico_eventsponsors.util import parse_contribution_ids
+
+    db.session.flush()
+    # Somebody who pasted the number out of a contribution's URL has done
+    # nothing unreasonable and should not be told they are wrong.
+    found, unknown = parse_contribution_ids(dummy_event, str(dummy_contribution.id))
+    assert found == [dummy_contribution.id]
+    assert not unknown
+
+
+def test_unknown_numbers_are_named_not_swallowed(db, dummy_event, dummy_contribution):
+    from indico_eventsponsors.util import parse_contribution_ids
+
+    db.session.flush()
+    found, unknown = parse_contribution_ids(dummy_event, f'{dummy_contribution.friendly_id}, 999999, banana')
+    # The good one is still resolved, and the form is told exactly which two it
+    # could not place -- "invalid input" is useless with twenty numbers in a box.
+    assert found == [dummy_contribution.id]
+    assert unknown == ['999999', 'banana']
+
+
+def test_separators_and_duplicates_are_forgiven(db, dummy_event, dummy_contribution):
+    from indico_eventsponsors.util import parse_contribution_ids
+
+    db.session.flush()
+    friendly = dummy_contribution.friendly_id
+    found, unknown = parse_contribution_ids(dummy_event, f' #{friendly} ,,{friendly};\n{friendly} ')
+    assert found == [dummy_contribution.id]
+    assert not unknown
+
+
+def test_a_sponsor_publishes_its_contributions(db, sponsored_event, dummy_contribution):
+    from indico_eventsponsors.models.sponsors import Sponsor
+    from indico_eventsponsors.util import sync_contributions
+
+    event, _template, gold, _silver = sponsored_event
+    sponsor = Sponsor.query.filter_by(event_id=event.id, tier_id=gold.id).one()
+    sync_contributions(sponsor, [dummy_contribution.id])
+    assert sponsor.linked_contribution_ids == [dummy_contribution.id]
+    # Named `linked_contribution_ids`, not `contribution_ids`: the form has a
+    # field by the latter name and WTForms would fill it from the object.
+    assert not hasattr(sponsor, 'contribution_ids')

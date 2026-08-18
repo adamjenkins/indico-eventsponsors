@@ -20,6 +20,7 @@ Everything is asserted numerically -- rendered widths, stored rows, HTTP status
 first and puts the template settings back afterwards, so it can be repeated.
 """
 import argparse
+import re
 import struct
 import sys
 import tempfile
@@ -332,6 +333,53 @@ with sync_playwright() as pw:
     page.goto(f'{BASE}/event/{EVENT}/', wait_until='networkidle')
     tiers_shown = page.evaluate("() => [...document.querySelectorAll('.evsp-tier')].map(t => t.dataset.tier)")
     check('ticking the boxes again brings the tier back', 'Platinum' in tiers_shown, str(tiers_shown))
+
+    print('\n== Attaching a sponsor to contributions ==')
+    page.goto(f'{BASE}/event/{EVENT}/manage/sponsors/', wait_until='networkidle')
+    page.locator('table tbody tr a.icon-edit').first.click()
+    page.wait_for_load_state('networkidle')
+    check('the sponsor page has a contributions box', page.locator('#contribution_ids').count() == 1)
+
+    page.locator('#contribution_ids').fill('999999')
+    page.click('input[type=submit]')
+    page.wait_for_load_state('networkidle')
+    body = page.locator('body').inner_text()
+    # Named, not swallowed: with twenty numbers in the box the useful
+    # information is which one is wrong.
+    check('an unknown number is rejected by name',
+          '999999' in body and 'No contribution' in body,
+          next((line for line in body.splitlines() if '999999' in line), '(no message)')[:100])
+    check('and nothing was saved', page.locator('#contribution_ids').count() == 1)
+
+    friendly = page.evaluate(
+        'async (id) => {'
+        ' const r = await fetch(`/export/event/${id}.json?detail=contributions&pretty=no`,'
+        "   {headers: {Accept: 'application/json'}});"
+        ' const body = await r.json();'
+        ' return (body.results[0].contributions || []).slice(0, 2)'
+        '   .map(c => [c.db_id, String(c.id)]);'
+        '}',
+        EVENT)
+    if len(friendly) < 2:
+        print('  --   this event has fewer than two contributions; skipping the rest')
+    else:
+        page.locator('#contribution_ids').fill(', '.join(f[1] for f in friendly))
+        page.click('input[type=submit]')
+        page.wait_for_load_state('networkidle')
+        page.locator('table tbody tr a.icon-edit').first.click()
+        page.wait_for_load_state('networkidle')
+        back = page.locator('#contribution_ids').input_value()
+        check('the box comes back with the numbers that were typed',
+              sorted(re.findall(r'\d+', back)) == sorted(f[1] for f in friendly),
+              f'{back!r} vs {[f[1] for f in friendly]}')
+        sponsors = page.evaluate(
+            'async (id) => (await (await fetch(`/event/${id}/sponsors/data`)).json()).sponsors', EVENT)
+        attached = [s['contribution_ids'] for s in sponsors if s.get('contribution_ids')]
+        # Global ids in the payload, friendly ones in the box: a client matches
+        # these against the schedule, which uses global ids.
+        check('the payload carries global ids, not the friendly ones',
+              any(sorted(ids) == sorted(f[0] for f in friendly) for ids in attached),
+              f'{attached} vs global {[f[0] for f in friendly]}')
 
     print('\n== The app placement checkbox ==')
     page.goto(f'{BASE}/event/{EVENT}/manage/sponsors/settings', wait_until='networkidle')

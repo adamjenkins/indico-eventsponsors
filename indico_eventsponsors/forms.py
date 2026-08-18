@@ -38,6 +38,12 @@ class SponsorForm(IndicoForm):
     use_campaign_url = BooleanField(_('Link to the campaign instead of the homepage'), widget=SwitchWidget(),
                                     description=_('The homepage is kept either way, so this can be turned off '
                                                   'again when the campaign ends.'))
+    contribution_ids = StringField(
+        _('Contributions'),
+        description=_("Comma-separated contribution numbers — the ones shown in this event's contribution "
+                      "list. The sponsor's logo appears on those talks in the phone app. Leave empty for a "
+                      'sponsor of the event as a whole.'),
+    )
     logo = FileField(_('Logo'), [FileAllowed(IMAGE_TYPES, _('That is not an image file.'))])
     delete_logo = BooleanField(_('Remove the current logo'))
     square_logo = FileField(_('Square logo'), [FileAllowed(IMAGE_TYPES, _('That is not an image file.'))],
@@ -47,8 +53,22 @@ class SponsorForm(IndicoForm):
 
     def __init__(self, *args, event=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.event = event
+        #: Set by `validate_contribution_ids`, so the controller stores the ids
+        #: the form already resolved instead of parsing the box a second time.
+        self.resolved_contribution_ids = []
         tiers = SponsorTier.query.filter_by(event_id=event.id).order_by(SponsorTier.position, SponsorTier.id).all()
         self.tier_id.choices = [(0, _('No tier'))] + [(t.id, f'{t.name} ({t.size})') for t in tiers]
+
+    def validate_contribution_ids(self, field):
+        from indico_eventsponsors.util import parse_contribution_ids
+        found, unknown = parse_contribution_ids(self.event, field.data)
+        if unknown:
+            # Naming them beats "invalid input": with twenty numbers in the box,
+            # the useful information is which one is wrong.
+            raise ValidationError(_('No contribution in this event matches: {numbers}')
+                                  .format(numbers=', '.join(unknown)))
+        self.resolved_contribution_ids = found
 
     def validate_use_campaign_url(self, field):
         if field.data and not self.campaign_url.data:
