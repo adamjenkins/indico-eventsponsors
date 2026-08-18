@@ -8,7 +8,7 @@
     Widths are inline because they are data, not design: each tier's percentage
     comes from its size relative to the largest tier being rendered.
 -#}
-{%- if with_styles %}<style>{% include 'eventsponsors:sponsors.css' %}</style>{% endif %}
+{%- if styles %}<style>{{ styles }}</style>{% endif %}
 <div class="evsp evsp-{{ template.layout }}">
     {%- for group in groups %}
     <div class="evsp-tier{{ ' evsp-inline' if group.fields.inline }}" data-tier="{{ group.tier.name }}">

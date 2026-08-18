@@ -170,3 +170,17 @@ def test_inline_marks_the_tier_in_the_rendered_block(db, sponsored_event):
     html = expand('{{sponsors_full}}', event)
     assert 'evsp-tier evsp-inline" data-tier="Gold"' in html
     assert 'evsp-tier" data-tier="Silver"' in html
+
+
+def test_the_inlined_stylesheet_carries_no_comments(sponsored_event):
+    event, _template, _gold, _silver = sponsored_event
+    from indico_eventsponsors.rendering import stylesheet
+
+    css = stylesheet()
+    # Everything in this file is downloaded by every visitor of a page carrying
+    # a shortcode, including the licence header the linter requires. The rules
+    # ship; the prose does not.
+    assert '/*' not in css and '*/' not in css
+    assert 'This file is part of' not in css
+    assert '.evsp-tier' in css and 'flex' in css
+    assert '/*' not in expand('{{sponsors_full}}', event)

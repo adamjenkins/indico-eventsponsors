@@ -1,0 +1,229 @@
+name: CI
+
+env:
+  TZ: Europe/Zurich
+  PYTHON_VERSION: '3.12.11'
+  # The plugin declares `indico>=3.3` and uses nothing newer, but a version has
+  # to be picked to test against and 3.3.12 is what it is deployed on. Testing a
+  # second version is a matrix over this one value -- worth adding if the plugin
+  # ever runs on a site tracking master, since the shortcode filter is coupled
+  # to core's rendered HTML and would drift silently.
+  INDICO_VERSION: 'v3.3.12'
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  # One environment, built once and shared. Installing Indico from git takes
+  # long enough that doing it per job is most of the run.
+  setup:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Install system dependencies
+        run: sudo apt-get install postgresql-client libpq-dev
+
+      - name: Create virtualenv
+        run: uv venv --python ${{ env.PYTHON_VERSION }} --seed .venv
+
+      - name: Activate virtualenv for later steps
+        run: |
+          echo "VIRTUAL_ENV=$(pwd)/.venv" >> $GITHUB_ENV
+          echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
+
+      - name: Install Indico
+        run: |
+          uv pip install babel
+          uv pip install "indico[dev] @ git+https://github.com/indico/indico.git@${{ env.INDICO_VERSION }}"
+
+      - name: Archive environment
+        run: tar cf /tmp/env.tar .venv
+
+      - name: Upload environment
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: environment
+          retention-days: 1
+          path: /tmp/env.tar
+
+  lint:
+    needs: setup
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # unbehead needs history to know which files are tracked.
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download environment
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: environment
+          path: /tmp
+
+      - name: Restore environment
+        run: tar xf /tmp/env.tar
+
+      - name: Activate virtualenv for later steps
+        run: |
+          echo "VIRTUAL_ENV=$(pwd)/.venv" >> $GITHUB_ENV
+          echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
+
+      # Each linter runs even when an earlier one failed: one run should report
+      # everything that needs fixing, not the first thing.
+      - name: Check import sorting
+        if: success() || failure()
+        run: isort --diff --check-only .
+
+      - name: Check headers
+        if: success() || failure()
+        run: |
+          echo '::add-matcher::.github/matchers/headers-problem-matcher.json'
+          unbehead --check
+          echo '::remove-matcher owner=headers::'
+
+      - name: Run ruff
+        if: success() || failure()
+        run: ruff check --output-format github .
+
+  test:
+    needs: setup
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Download environment
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: environment
+          path: /tmp
+
+      - name: Restore environment
+        run: tar xf /tmp/env.tar
+
+      - name: Activate virtualenv for later steps
+        run: |
+          echo "VIRTUAL_ENV=$(pwd)/.venv" >> $GITHUB_ENV
+          echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
+
+      # `--no-deps`: the plugin depends on `indico>=3.3`, and without this uv
+      # replaces the pre-release install from git with a PyPI release.
+      - name: Install plugin
+        run: uv pip install --no-deps -e .
+
+      # pytest-redis spawns its own instance and needs the binary on PATH; the
+      # Postgres service container does not cover this.
+      - name: Install redis
+        run: sudo apt-get install redis-server
+
+      - name: Setup database
+        run: |
+          export PGHOST=localhost
+          export PGUSER=postgres
+          createuser indicotest
+          createdb -O indicotest indicotest
+          psql indicotest -c 'CREATE EXTENSION unaccent;'
+          psql indicotest -c 'CREATE EXTENSION pg_trgm;'
+        env:
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+
+      # Scoped to `tests`, not bare: a checkout with an Indico source tree beside
+      # it (as a developer's usually has) otherwise collects core's own conftest
+      # and aborts. Same command works here and on a laptop.
+      - name: Run tests
+        run: |
+          export INDICO_TEST_DATABASE_URI="postgresql://indicotest@localhost:${PGPORT}/indicotest"
+          pytest tests --color=yes
+        env:
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+
+  # The plugin ships no compiled assets, but it does ship templates and a
+  # stylesheet as package data, and a block whose stylesheet went missing from
+  # the wheel would render unstyled with nothing else to show for it. Build the
+  # wheel and look inside.
+  build:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Build the wheel
+        run: uv build --wheel
+
+      - name: Check the wheel carries its templates and migrations
+        run: python .github/check-wheel.py
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: wheel
+          retention-days: 7
+          path: dist/*.whl

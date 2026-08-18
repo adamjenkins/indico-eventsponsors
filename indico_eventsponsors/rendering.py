@@ -14,7 +14,11 @@ everything else in proportion, so the block is sized by the space it is dropped
 into rather than by any fixed number of pixels.
 """
 
+import re
+from pathlib import Path
+
 from flask_pluginengine import render_plugin_template
+from markupsafe import Markup
 
 from indico.core.plugins import url_for_plugin
 
@@ -22,6 +26,27 @@ from indico.core.plugins import url_for_plugin
 #: Never smaller than this, whatever the arithmetic says: on a phone the block
 #: is a few hundred pixels wide, and a quarter of that is not a logo any more.
 MIN_LOGO_PX = 80
+
+_STYLESHEET = Path(__file__).parent / 'templates' / 'sponsors.css'
+_CSS_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
+_BLANK_LINES_RE = re.compile(r'\n{2,}')
+
+
+def stylesheet():
+    """The block's CSS, with its comments removed.
+
+    This file is inlined into somebody's page rather than served as an asset, so
+    everything in it is downloaded by every visitor. The comments are written
+    for whoever maintains the rules -- including the licence header, which the
+    header linter requires and which has no business on a conference programme --
+    and they are worth keeping in the repository and not worth shipping.
+
+    Stripped with a regular expression, which is safe precisely because this is
+    not arbitrary CSS: it is one file in this repository with no comment-like
+    text inside a string.
+    """
+    css = _CSS_COMMENT_RE.sub('', _STYLESHEET.read_text())
+    return _BLANK_LINES_RE.sub('\n', css).strip()
 
 
 def logo_url(logo):
@@ -85,6 +110,9 @@ def render_block(event, template, *, with_styles=True):
     # The template is named with its plugin prefix rather than bare: this renders
     # from an `after_request` hook, which runs outside any plugin context, and a
     # bare name would need one.
+    # `Markup`: this is the plugin's own stylesheet read off disk, not anything a
+    # user supplied, and escaping it would put `&gt;` in the middle of a selector.
+    styles = Markup(stylesheet()) if with_styles else None
     return render_plugin_template('eventsponsors:sponsors_block.html', template=template, groups=groups,
-                                  with_styles=with_styles, logo_url=logo_url, sponsor_image=sponsor_image,
+                                  styles=styles, logo_url=logo_url, sponsor_image=sponsor_image,
                                   min_logo_px=MIN_LOGO_PX)

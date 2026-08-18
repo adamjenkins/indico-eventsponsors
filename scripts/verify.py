@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# This file is part of the Event Sponsors plugin for Indico.
+# Copyright (C) 2026 Adam Jenkins
+#
+# The Event Sponsors plugin is free software; you can redistribute
+# it and/or modify it under the terms of the MIT License;
+# see the LICENSE file for more details.
+
 """End-to-end verification against a real Indico instance.
 
     python3 scripts/verify.py --session <sid> --event <id>

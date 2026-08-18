@@ -41,6 +41,11 @@ All notable changes to the Event Sponsors plugin are documented here.
   than inherited.
 
 ### Fixed
+- **The inlined stylesheet no longer carries its own comments.** The block's CSS
+  is injected into somebody's page rather than served as an asset, so everything
+  in it is downloaded by every visitor — including the licence header the header
+  linter requires. The comments stay in the repository and are stripped on the
+  way out, which halved what gets inlined.
 - **Inline logos now share a line.** Every logo in an inline tier is drawn into
   a box of the same shape, with the artwork fitted inside it standing on the
   floor — so a row of mixed proportions reads as a row. Anchoring the cards to
