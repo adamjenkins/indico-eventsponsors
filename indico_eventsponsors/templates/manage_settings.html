@@ -1,0 +1,89 @@
+{% extends 'events/management/base.html' %}
+
+{% block title %}{% trans %}Tiers and templates{% endtrans %}{% endblock %}
+
+{% block content %}
+    {% with active = 'settings' %}{% include 'eventsponsors:_tabs.html' %}{% endwith %}
+
+    <h3>{% trans %}Tiers{% endtrans %}</h3>
+    <p>
+        {%- trans -%}
+            A tier's size only means anything next to the other tiers here: a tier at 60 draws its logos half again
+            as wide as one at 40, whatever width the page gives the block.
+        {%- endtrans -%}
+    </p>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <table class="i-table-widget">
+            <thead>
+                <tr>
+                    <th>{% trans %}Name{% endtrans %}</th>
+                    <th>{% trans %}Size{% endtrans %}</th>
+                    <th>{% trans %}Sponsors{% endtrans %}</th>
+                    <th>{% trans %}Delete{% endtrans %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tier in tiers %}
+                    <tr>
+                        <td><input type="text" name="name_{{ tier.id }}" value="{{ tier.name }}" required></td>
+                        <td><input type="number" name="size_{{ tier.id }}" value="{{ tier.size }}" min="1" max="1000" required></td>
+                        <td>{{ tier.sponsors.count() }}</td>
+                        <td><input type="checkbox" name="delete_{{ tier.id }}"></td>
+                    </tr>
+                {% endfor %}
+                <tr>
+                    <td><input type="text" name="new_name" placeholder="{% trans %}Add a tier…{% endtrans %}"></td>
+                    <td><input type="number" name="new_size" value="50" min="1" max="1000"></td>
+                    <td colspan="2"></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="toolbar" style="margin-top: 1em;">
+            <button type="submit" class="i-button highlight">{% trans %}Save tiers{% endtrans %}</button>
+        </div>
+    </form>
+
+    <h3 style="margin-top: 2.5em;">{% trans %}Templates{% endtrans %}</h3>
+    <p>
+        {%- trans -%}
+            Each template is one shortcode, and decides what every tier shows when that shortcode is used.
+        {%- endtrans -%}
+    </p>
+    <table class="i-table-widget">
+        <thead>
+            <tr>
+                <th>{% trans %}Shortcode{% endtrans %}</th>
+                <th>{% trans %}Name{% endtrans %}</th>
+                <th>{% trans %}Layout{% endtrans %}</th>
+                <th>{% trans %}Phone app{% endtrans %}</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tpl in templates %}
+                <tr>
+                    <td><code>{{ tpl.shortcode }}</code></td>
+                    <td>{{ tpl.title }}</td>
+                    <td>{{ tpl.layout }}</td>
+                    <td>{{ '✓' if tpl.for_app else '' }}</td>
+                    <td style="white-space: nowrap;">
+                        <a class="i-button icon-edit" href="{{ url_for_plugin('eventsponsors.template_edit', event, template_id=tpl.id) }}"></a>
+                        <form method="post" style="display: inline;"
+                              action="{{ url_for_plugin('eventsponsors.template_delete', event, template_id=tpl.id) }}"
+                              onsubmit="return confirm('{% trans %}Delete this template?{% endtrans %}');">
+                            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                            <button type="submit" class="i-button icon-remove"></button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="toolbar" style="margin-top: 1em;">
+        <a class="i-button icon-plus" href="{{ url_for_plugin('eventsponsors.template_create', event) }}">
+            {%- trans %}Add template{% endtrans -%}
+        </a>
+    </div>
+{% endblock %}

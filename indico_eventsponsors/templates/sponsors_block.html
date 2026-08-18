@@ -1,0 +1,47 @@
+{#- One expanded shortcode.
+
+    The stylesheet travels with the block. This markup can land on any page of
+    the site -- a custom menu page, an event description, a contribution
+    abstract -- and none of those load this plugin's assets, so the block cannot
+    assume a stylesheet is there. It is emitted once per response.
+
+    Widths are inline because they are data, not design: each tier's percentage
+    comes from its size relative to the largest tier being rendered.
+-#}
+{%- if with_styles %}<style>{% include 'eventsponsors:sponsors.css' %}</style>{% endif %}
+<div class="evsp evsp-{{ template.layout }}">
+    {%- for group in groups %}
+    <div class="evsp-tier" data-tier="{{ group.tier.name }}">
+        {%- for sponsor in group.sponsors %}
+            {%- set fields = group.fields %}
+            {%- set image = sponsor_image(sponsor, fields) %}
+            {%- set url = sponsor.link_url if fields.linked else none %}
+        <div class="evsp-item" style="--evsp-w: {{ group.width_pct }}%; --evsp-min: {{ min_logo_px }}px;">
+            {%- if image %}
+            <div class="evsp-logo">
+                {%- if url %}<a href="{{ url }}" rel="noopener noreferrer nofollow" target="_blank">{% endif %}
+                <img src="{{ logo_url(image) }}" alt="{{ sponsor.name }}" loading="lazy">
+                {%- if url %}</a>{% endif %}
+            </div>
+            {%- endif %}
+            {%- if fields.show_name or fields.show_tagline or fields.show_description %}
+            <div class="evsp-text">
+                {%- if fields.show_name %}
+                <div class="evsp-name">
+                    {%- if url %}<a href="{{ url }}" rel="noopener noreferrer nofollow" target="_blank">{{ sponsor.name }}</a>
+                    {%- else %}{{ sponsor.name }}{% endif %}
+                </div>
+                {%- endif %}
+                {%- if fields.show_tagline and sponsor.tagline %}
+                <div class="evsp-tagline">{{ sponsor.tagline }}</div>
+                {%- endif %}
+                {%- if fields.show_description and sponsor.description %}
+                <p class="evsp-description">{{ sponsor.description }}</p>
+                {%- endif %}
+            </div>
+            {%- endif %}
+        </div>
+        {%- endfor %}
+    </div>
+    {%- endfor %}
+</div>

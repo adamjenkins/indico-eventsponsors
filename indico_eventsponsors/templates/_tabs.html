@@ -1,0 +1,9 @@
+{#- The two pages of this plugin, shown as tabs on both of them. -#}
+<div class="flexrow f-j-space-between" style="margin-bottom: 1em;">
+    <div class="group i-selection">
+        <a class="i-button{% if active == 'sponsors' %} highlight{% endif %}"
+           href="{{ url_for_plugin('eventsponsors.manage', event) }}">{% trans %}Sponsors{% endtrans %}</a>
+        <a class="i-button{% if active == 'settings' %} highlight{% endif %}"
+           href="{{ url_for_plugin('eventsponsors.settings', event) }}">{% trans %}Tiers and templates{% endtrans %}</a>
+    </div>
+</div>

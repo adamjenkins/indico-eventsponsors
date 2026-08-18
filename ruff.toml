@@ -1,0 +1,166 @@
+target-version = 'py312'
+line-length = 120
+extend-exclude = ['docs', 'htmlcov', '*.egg-info', 'indico-src']
+
+[lint]
+preview = true
+dummy-variable-rgx = '^(_{2,}|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$' # a single `_` is already used for i18n
+
+select = [
+    'E',      # pycodestyle (errors)
+    'W',      # pycodestyle (warnings)
+    'F',      # pyflakes
+    'N',      # pep8-naming
+    'Q',      # flake8-quotes
+    'RUF',    # ruff
+    'UP',     # pyupgrade
+    'D',      # pydocstyle
+    'S',      # flake8-bandit
+    'C4',     # flake8-comprehensions
+    'INT',    # flake8-gettext
+    'LOG',    # flake8-logging
+    'G',      # flake8-logging-format
+    'B',      # flake8-bugbear
+    'A001',   # flake8-builtins
+    'COM',    # flake8-commas
+    'T10',    # flake8-debugger
+    'EXE',    # flake8-executable
+    'ISC',    # flake8-implicit-str-concat
+    'PIE',    # flake8-pie
+    'PT',     # flake8-pytest-style
+    'RSE',    # flake8-raise
+    'RET504', # flake8-return
+    'SIM',    # flake8-simplify
+    'TID',    # flake8-tidy-imports
+    'PGH',    # pygrep-hooks
+    'PL',     # pylint
+    'TRY',    # tryceratops
+    'PERF',   # perflint
+    'FURB',   # refurb
+]
+ignore = [
+    'D400',
+    'E226',
+    'E731',
+    'N818',
+    'RUF012',
+    'RUF015',
+    'RUF022',
+    'RUF027',
+    'RUF052',
+    'RUF067',
+    'D205',
+    'D301',
+    'D1',
+    'D401',
+    'D412',
+    'S101',
+    'S113',
+    'S311',
+    'S324',
+    'S404',
+    'S403',
+    'S405',
+    'S603',
+    'S607',
+    'S704',
+    'B011',
+    'B904',
+    'COM812',
+    'PIE807',
+    'PT011',
+    'PT015',
+    'PT018',
+    'SIM102',
+    'SIM103',
+    'SIM105',
+    'SIM108',
+    'SIM114',
+    'SIM117',
+    'PLC0415',
+    'PLC2701',
+    'PLR09',
+    'PLR0913',
+    'PLR2004',
+    'PLR6201',
+    'PLR6301',
+    'PLW0108',
+    'PLW1510',
+    'PLW1514',
+    'PLW1641',
+    'PLW2901',
+    'TRY002',
+    'TRY003',
+    'TRY300',
+    'TRY301',
+    'TRY400',
+    'PERF203',
+    'FURB113',
+    'FURB140',
+    'FURB189',
+]
+
+extend-safe-fixes = [
+    'RUF005',
+    'C4',
+    'UP008',
+    'D200',
+    'D400',
+    'PT014',
+    'RSE102',
+    'RET504',
+    'SIM110',
+    'PERF102',
+]
+
+[format]
+quote-style = 'single'
+
+[lint.flake8-builtins]
+builtins-ignorelist = ['id', 'format', 'input', 'type', 'credits']
+
+[lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+parametrize-names-type = 'tuple'
+parametrize-values-type = 'tuple'
+parametrize-values-row-type = 'tuple'
+
+[lint.flake8-quotes]
+inline-quotes = 'single'
+multiline-quotes = 'single'
+docstring-quotes = 'double'
+avoid-escape = true
+
+[lint.pep8-naming]
+ignore-names = [
+    '_process_GET',
+    '_process_POST',
+    '_process_PATCH',
+    '_process_PUT',
+    '_process_DELETE',
+]
+classmethod-decorators = [
+    'classmethod',
+    'declared_attr',
+    'strict_classproperty',
+    'expression',
+    'comparator',
+]
+
+[lint.pydocstyle]
+convention = 'pep257'
+
+[lint.pylint]
+allow-dunder-method-names = [
+    '__table_args__',
+    '__tablename__',
+    '__clause_element__',
+]
+
+[lint.ruff]
+parenthesize-tuple-in-subscript = true
+
+[lint.per-file-ignores]
+'*/*_test.py' = ['E221', 'E241', 'E272', 'N802', 'S105', 'S106', 'PLC1901']
+'*/migrations/*.py' = ['E501', 'D400']

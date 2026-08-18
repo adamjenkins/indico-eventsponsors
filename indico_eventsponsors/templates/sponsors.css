@@ -1,0 +1,42 @@
+/* Styles for an expanded sponsors block.
+
+   Scoped hard under .evsp, because this is injected into pages belonging to
+   themes this plugin has never seen and must not touch anything around it.
+   Sizing is by percentage throughout: the block is given whatever width the
+   surrounding page has, and every logo is a share of that. */
+.evsp { margin: 1.5em 0; }
+.evsp-tier { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1.6em 1.8em; margin-bottom: 1.6em; }
+.evsp-tier:last-child { margin-bottom: 0; }
+
+/* flex-basis carries the tier's share; max-width stops a wide logo growing past
+   it, and min-width keeps the smallest tier legible once the block itself is
+   only a few hundred pixels wide. */
+.evsp-item { flex: 0 1 var(--evsp-w); max-width: var(--evsp-w); min-width: var(--evsp-min); }
+.evsp-logo img { display: block; width: 100%; height: auto; }
+.evsp-name { font-weight: 600; margin-top: 0.4em; }
+.evsp-tagline { color: #555; font-size: 0.9em; margin-top: 0.15em; }
+.evsp-description { margin: 0.5em 0 0; }
+.evsp a { text-decoration: none; }
+.evsp a:hover { text-decoration: underline; }
+
+/* The grid centres its logos; a row of four sponsors reads better centred than
+   ragged-left under a heading. */
+.evsp-grid .evsp-tier { justify-content: center; text-align: center; }
+
+/* The list gives each sponsor a full row, logo beside the text -- which is the
+   only layout where a paragraph description is readable.
+
+   `align-items: stretch` is load-bearing, not tidying: the base rule aligns to
+   flex-start, which in a column container makes every row only as wide as its
+   own contents. The logo widths are percentages of the row, so rows of
+   different widths would give the same tier different logo sizes depending on
+   how much text its sponsors happened to have. */
+.evsp-list .evsp-tier { flex-direction: column; align-items: stretch; gap: 1.2em; }
+.evsp-list .evsp-item { display: flex; align-items: flex-start; gap: 1.2em; flex: 1 1 auto; max-width: none; }
+.evsp-list .evsp-logo { flex: 0 0 var(--evsp-w); max-width: var(--evsp-w); min-width: var(--evsp-min); }
+.evsp-list .evsp-text { flex: 1 1 auto; min-width: 0; }
+.evsp-list .evsp-name { margin-top: 0; }
+
+@media print {
+  .evsp a { text-decoration: none; }
+}

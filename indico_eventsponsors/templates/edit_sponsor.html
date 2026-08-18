@@ -1,0 +1,33 @@
+{% extends 'events/management/base.html' %}
+{% from 'forms/_form.html' import form_header, form_rows, form_footer %}
+
+{% block title %}{% if sponsor %}{{ sponsor.name }}{% else %}{% trans %}New sponsor{% endtrans %}{% endif %}{% endblock %}
+
+{% block content %}
+    {{ form_header(form, multipart=true) }}
+    {{ form_rows(form) }}
+
+    {% if sponsor and (sponsor.logo or sponsor.square_logo) %}
+        <div class="i-callout" style="margin: 1em 0;">
+            {% trans %}Currently uploaded:{% endtrans %}
+            {% for logo in [sponsor.logo, sponsor.square_logo] if logo %}
+                <img src="{{ url_for_plugin('eventsponsors.logo', event, logo_id=logo.id, filename=logo.filename) }}"
+                     alt="" style="max-height: 48px; max-width: 140px; vertical-align: middle; margin: 0 .8em;">
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% call form_footer(form) %}
+        <input class="i-button big highlight" type="submit" value="{% trans %}Save{% endtrans %}">
+        <a class="i-button big" href="{{ url_for_plugin('eventsponsors.manage', event) }}">{% trans %}Back{% endtrans %}</a>
+    {% endcall %}
+
+    {% if sponsor %}
+        <form method="post" style="margin-top: 1.5em;"
+              action="{{ url_for_plugin('eventsponsors.sponsor_delete', event, sponsor_id=sponsor.id) }}"
+              onsubmit="return confirm('{% trans %}Delete this sponsor?{% endtrans %}');">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit" class="i-button danger icon-remove">{% trans %}Delete sponsor{% endtrans %}</button>
+        </form>
+    {% endif %}
+{% endblock %}

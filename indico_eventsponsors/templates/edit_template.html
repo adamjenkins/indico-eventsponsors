@@ -1,0 +1,46 @@
+{% extends 'events/management/base.html' %}
+{% from 'forms/_form.html' import form_header, form_rows, form_footer %}
+
+{% block title %}{% if template %}{{ template.title }}{% else %}{% trans %}New template{% endtrans %}{% endif %}{% endblock %}
+
+{% block content %}
+    {{ form_header(form) }}
+    {{ form_rows(form) }}
+
+    <h3 style="margin-top: 1.5em;">{% trans %}What each tier shows{% endtrans %}</h3>
+    <p>
+        {%- trans -%}
+            A tier with nothing ticked does not appear in this block at all — that is how a template shows only its
+            top tiers.
+        {%- endtrans -%}
+    </p>
+
+    {% if tiers %}
+        <table class="i-table-widget">
+            <thead>
+                <tr>
+                    <th>{% trans %}Tier{% endtrans %}</th>
+                    {% for name, label in fields %}<th>{{ label }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for tier in tiers %}
+                    <tr>
+                        <td>{{ tier.name }} <span class="text-superfluous">({{ tier.size }})</span></td>
+                        {% for name, label in fields %}
+                            {% set field = matrix['tier_%d_%s'|format(tier.id, name)] %}
+                            <td style="text-align: center;">{{ field() }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="i-callout warning">{% trans %}Add some tiers first.{% endtrans %}</div>
+    {% endif %}
+
+    {% call form_footer(form) %}
+        <input class="i-button big highlight" type="submit" value="{% trans %}Save{% endtrans %}">
+        <a class="i-button big" href="{{ url_for_plugin('eventsponsors.settings', event) }}">{% trans %}Back{% endtrans %}</a>
+    {% endcall %}
+{% endblock %}

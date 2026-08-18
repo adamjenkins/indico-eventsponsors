@@ -1,0 +1,88 @@
+{% extends 'events/management/base.html' %}
+
+{% block title %}{% trans %}Sponsors{% endtrans %}{% endblock %}
+
+{% block content %}
+    {% with active = 'sponsors' %}{% include 'eventsponsors:_tabs.html' %}{% endwith %}
+
+    {% if not tiers %}
+        <div class="i-callout warning">
+            {%- trans %}This event has no sponsorship tiers yet, so nothing can be rendered. Add some under
+            "Tiers and templates".{% endtrans -%}
+        </div>
+    {% endif %}
+
+    <div class="toolbar" style="margin-bottom: 1em;">
+        <a class="i-button icon-plus highlight" href="{{ url_for_plugin('eventsponsors.sponsor_create', event) }}">
+            {%- trans %}Add sponsor{% endtrans -%}
+        </a>
+    </div>
+
+    {% if sponsors %}
+        <table class="i-table-widget">
+            <thead>
+                <tr>
+                    <th>{% trans %}Tier{% endtrans %}</th>
+                    <th>{% trans %}Sponsor{% endtrans %}</th>
+                    <th>{% trans %}Links to{% endtrans %}</th>
+                    <th>{% trans %}Active{% endtrans %}</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sponsor in sponsors %}
+                    <tr{% if not sponsor.is_active %} style="opacity: .55;"{% endif %}>
+                        <td>
+                            {%- if sponsor.tier %}{{ sponsor.tier.name }} <span class="text-superfluous">({{ sponsor.tier.size }})</span>
+                            {%- else %}<span class="text-error">{% trans %}No tier — never shown{% endtrans %}</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if sponsor.logo %}
+                                <img src="{{ url_for_plugin('eventsponsors.logo', event, logo_id=sponsor.logo.id, filename=sponsor.logo.filename) }}"
+                                     alt="" style="max-height: 28px; max-width: 90px; vertical-align: middle; margin-right: .6em;">
+                            {% endif %}
+                            <a href="{{ url_for_plugin('eventsponsors.sponsor_edit', sponsor.event, sponsor_id=sponsor.id) }}">{{ sponsor.name }}</a>
+                            {% if sponsor.tagline %}<div class="text-superfluous">{{ sponsor.tagline }}</div>{% endif %}
+                        </td>
+                        <td>
+                            {%- if sponsor.link_url %}
+                                <span class="text-superfluous">{{ 'campaign' if sponsor.use_campaign_url and sponsor.campaign_url else 'homepage' }}</span>
+                            {%- else %}<span class="text-superfluous">{% trans %}nothing{% endtrans %}</span>{% endif %}
+                        </td>
+                        <td>{{ '✓' if sponsor.is_active else '—' }}</td>
+                        <td style="white-space: nowrap;">
+                            <form method="post" style="display: inline;"
+                                  action="{{ url_for_plugin('eventsponsors.sponsor_move', sponsor.event, sponsor_id=sponsor.id, direction='up') }}">
+                                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                                <button class="i-button icon-arrow-up" type="submit" title="{% trans %}Move up{% endtrans %}"></button>
+                            </form>
+                            <form method="post" style="display: inline;"
+                                  action="{{ url_for_plugin('eventsponsors.sponsor_move', sponsor.event, sponsor_id=sponsor.id, direction='down') }}">
+                                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                                <button class="i-button icon-arrow-down" type="submit" title="{% trans %}Move down{% endtrans %}"></button>
+                            </form>
+                            <a class="i-button icon-edit" href="{{ url_for_plugin('eventsponsors.sponsor_edit', sponsor.event, sponsor_id=sponsor.id) }}"></a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="i-callout">{% trans %}No sponsors yet.{% endtrans %}</div>
+    {% endif %}
+
+    {% if templates %}
+        <h3 style="margin-top: 2em;">{% trans %}Shortcodes{% endtrans %}</h3>
+        <p>
+            {%- trans -%}
+                Type one of these into a custom page, the event description, or anywhere else on this event's
+                public pages, and it is replaced by the sponsors it names.
+            {%- endtrans -%}
+        </p>
+        <ul>
+            {% for tpl in templates %}
+                <li><code>{{ tpl.shortcode }}</code> — {{ tpl.title }}{% if tpl.for_app %} <em>({% trans %}also used by the phone app{% endtrans %})</em>{% endif %}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endblock %}

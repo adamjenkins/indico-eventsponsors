@@ -1,0 +1,30 @@
+[project]
+name = 'indico-plugin-eventsponsors'
+description = 'Sponsor records for Indico events, rendered into the site through shortcodes'
+readme = 'README.md'
+version = '0.1.0'
+license = 'MIT'
+authors = [
+    { name = 'Adam Jenkins' },
+]
+requires-python = '>=3.12.2, <3.13'
+dependencies = ['indico>=3.3']
+
+[project.entry-points.'indico.plugins']
+eventsponsors = 'indico_eventsponsors.plugin:EventsponsorsPlugin'
+
+[build-system]
+requires = ['hatchling==1.28.0']
+build-backend = 'hatchling.build'
+
+[tool.hatch.build]
+packages = ['indico_eventsponsors']
+exclude = [
+    '*.no-header',
+    '.keep',
+    'tests/',
+    '*_test.py',
+]
+artifacts = [
+    'indico_*/translations/**/*.mo',
+]

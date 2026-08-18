@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Compiled translations
+*.mo
+
+# A local Indico core checkout (or symlink to one), used by tooling -- never the
+# same on two machines.
+indico-src
+.indico_source
+
+# Editor/OS noise
+.DS_Store
+*.swp
