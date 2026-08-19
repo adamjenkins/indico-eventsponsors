@@ -85,8 +85,14 @@ and drifting from it. It 404s when the feature is off.
 
 Requires Indico 3.3 or newer. There are no frontend assets to build.
 
-1. Clone this repository anywhere convenient.
-2. Activate Indico's virtualenv and install the plugin:
+1. Get the plugin. Every tagged release attaches a wheel, which is all there is
+   to install:
+   ```bash
+   pip install https://github.com/adamjenkins/indico-eventsponsors/releases/download/v0.1.0/indico_plugin_eventsponsors-0.1.0-py3-none-any.whl
+   ```
+   To work on the plugin instead, clone this repository anywhere convenient.
+2. Activate Indico's virtualenv and install the plugin — from a clone, in
+   editable mode:
    ```bash
    pip install -e .
    # (or, on a venv managed with uv: uv pip install --no-deps -e .)

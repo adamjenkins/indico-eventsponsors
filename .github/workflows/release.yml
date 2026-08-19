@@ -1,0 +1,93 @@
+name: Release
+
+# Builds the wheel and attaches it to the GitHub Release for the tag, so that
+# installing the plugin on a site is `pip install <url>` rather than a clone.
+# Unlike a plugin with a webpack build, nothing here is compiled against a
+# particular Indico version -- the package is Python, Jinja templates and one
+# stylesheet -- so the wheel is valid for any Indico the plugin supports and
+# needs neither Node nor an Indico source checkout to build.
+#
+# Triggered by pushing a tag (`git tag v0.1.0 && git push origin v0.1.0`), or
+# manually from the Actions tab for a dry run that builds without publishing.
+
+env:
+  PYTHON_VERSION: '3.12.11'
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write        # required to create the release and upload the wheel
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+
+      - name: Build the wheel
+        run: uv build --wheel
+
+      # The wheel's filename is the only place the published artifact carries a
+      # version, so a tag that disagrees with pyproject.toml would ship 0.1.0
+      # under a v0.1.1 release with nothing to show the mismatch.
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          wheel=$(ls dist/*.whl)
+          version=$(basename "$wheel" | cut -d- -f2)
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match version ${version} in pyproject.toml"
+            exit 1
+          fi
+
+      # Templates and the stylesheet are package data that nothing imports, so a
+      # wheel missing them installs cleanly and then 500s on a management page.
+      - name: Check the wheel carries its templates and migrations
+        run: python .github/check-wheel.py
+
+      - name: Upload the wheel as a workflow artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: wheel
+          path: dist/*.whl
+
+      - name: Publish to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          wheel=$(basename dist/*.whl)
+          # The notes are .github/release-notes.md with `@REPO@`, `@TAG@` and
+          # `@WHEEL@` filled in. They live in their own file rather than a
+          # heredoc here because anything inline has to be indented to keep the
+          # YAML valid, and those leading spaces reach the release page as a
+          # code block.
+          sed -e "s|@REPO@|${GITHUB_REPOSITORY}|g" \
+              -e "s|@TAG@|${tag}|g" \
+              -e "s|@WHEEL@|${wheel}|g" \
+              .github/release-notes.md > /tmp/notes.md
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.whl --clobber
+          else
+            gh release create "$tag" dist/*.whl --title "$tag" --notes-file /tmp/notes.md
+          fi

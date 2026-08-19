@@ -2,7 +2,7 @@
 
 All notable changes to the Event Sponsors plugin are documented here.
 
-## [Unreleased]
+## [0.1.0] — 2026-08-19
 
 ### Added
 - **Event cloning.** Two cloners rather than one, because their costs differ:
