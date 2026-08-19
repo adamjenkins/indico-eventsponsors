@@ -7,12 +7,14 @@
 
 import re
 
+from flask import g, has_app_context
 from werkzeug.datastructures import FileStorage
 
 from indico.core.db import db
+from indico.core.storage.backend import get_storage
 
 from indico_eventsponsors.models.sponsors import Sponsor, SponsorContribution, SponsorLogo
-from indico_eventsponsors.models.templates import TEMPLATE_FIELDS, SponsorTemplate, SponsorTemplateTier
+from indico_eventsponsors.models.templates import NEW_TIER_FIELDS, TEMPLATE_FIELDS, SponsorTemplate, SponsorTemplateTier
 from indico_eventsponsors.models.tiers import SponsorTier
 
 
@@ -50,20 +52,27 @@ def store_logo(event, file_storage):
     return logo
 
 
+#: `g` key holding the storage files whose rows were deleted in this request,
+#: as (backend, file_id) pairs. Swept by `delete_queued_files` after commit.
+_PENDING_FILES_KEY = 'eventsponsors_pending_file_deletes'
+
+
 def delete_logo(logo):
-    """Remove an image from storage and from the database."""
-    from indico_eventsponsors.plugin import EventsponsorsPlugin
+    """Remove an image from the database, and from storage once that commits.
+
+    Storage is not transactional: a file delete takes effect immediately, while
+    the row delete below only happens on commit and is undone if anything later
+    in the request fails -- which would leave a sponsor pointing at a file that
+    is no longer there, a broken image on a conference programme. So the file
+    is only queued here, and deleted by `delete_queued_files` once the commit
+    has made the row's removal final. The one failure mode left is a file
+    nothing points at, which nobody ever sees.
+
+    The pointers have to go before the row does, or the flush trips the
+    foreign key from `sponsors` and takes the whole request with it.
+    """
     if logo is None:
         return
-    # Row first, file second. Storage is not transactional: removing the file
-    # takes effect immediately while the row only goes on commit, so doing it the
-    # other way round leaves a sponsor pointing at a file that is not there if
-    # anything later in the request fails -- which is a broken image on a
-    # conference programme. This ordering fails the other way instead, leaving a
-    # file nothing points at, which nobody ever sees.
-    #
-    # The pointers have to go before the row does, or the flush trips the
-    # foreign key from `sponsors` and takes the whole request with it.
     for sponsor in Sponsor.query.filter(db.or_(Sponsor.logo_id == logo.id,
                                                Sponsor.square_logo_id == logo.id)):
         if sponsor.logo_id == logo.id:
@@ -73,12 +82,29 @@ def delete_logo(logo):
     db.session.flush()
     db.session.delete(logo)
     db.session.flush()
-    try:
-        logo.delete()
-    except Exception:
-        # An orphaned file is not worth failing a request over, but a storage
-        # backend refusing deletes is worth knowing about.
-        EventsponsorsPlugin.logger.exception('Could not delete sponsor logo %r from storage', logo)
+    if logo.storage_file_id is not None:
+        g.setdefault(_PENDING_FILES_KEY, []).append((logo.storage_backend, logo.storage_file_id))
+
+
+def delete_queued_files(sender=None, **kwargs):
+    """Delete the files whose rows went in this request. Runs after commit.
+
+    Connected to `signals.core.after_commit` for the process's whole life (see
+    the plugin) rather than connected and disconnected around each request:
+    the queue lives in `g`, so a commit only ever sweeps its own request's
+    files, and there is no receiver registration for another thread to race.
+    """
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+    if not has_app_context():
+        return
+    for backend, file_id in g.pop(_PENDING_FILES_KEY, []):
+        try:
+            get_storage(backend).delete(file_id)
+        except Exception:
+            # The transaction is committed, so there is nothing left to fail:
+            # an orphaned file is the accepted cost. A storage backend refusing
+            # deletes is still worth knowing about.
+            EventsponsorsPlugin.logger.exception('Could not delete file %s from storage %s', file_id, backend)
 
 
 def apply_logo_fields(event, sponsor, form):
@@ -153,6 +179,34 @@ def sync_contributions(sponsor, contribution_ids):
             sponsor.contribution_links.remove(link)
     for contribution_id in wanted:
         sponsor.contribution_links.append(SponsorContribution(contribution_id=contribution_id))
+    db.session.flush()
+
+
+def next_position(model, event):
+    """The position after every existing `model` row of `event`.
+
+    `max + 1` rather than a row count: positions survive deletions, so a count
+    can land on a position a surviving row still holds -- and the new row then
+    sorts by the id tiebreak instead of unambiguously last.
+    """
+    last = db.session.query(db.func.max(model.position)).filter(model.event_id == event.id).scalar()
+    return last + 1 if last is not None else 0
+
+
+def seed_tier_into_templates(event, tier):
+    """Give a brand-new tier a row in every template the event already has.
+
+    Without this a tier created after the templates renders in none of them:
+    `build_groups` reads a missing row as "deliberately excluded", while the
+    template editor shows the tier with `NEW_TIER_FIELDS` ticked -- a default
+    that would exist only on screen until every template was opened and
+    re-saved. Storing that same set makes the form and the database agree.
+    """
+    for template in SponsorTemplate.query.filter_by(event_id=event.id):
+        settings = SponsorTemplateTier(template=template, tier=tier)
+        for field, _label in TEMPLATE_FIELDS:
+            setattr(settings, field, field in NEW_TIER_FIELDS)
+        db.session.add(settings)
     db.session.flush()
 
 

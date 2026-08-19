@@ -52,6 +52,21 @@ def test_seed_event_is_not_repeated(db, dummy_event):
     assert SponsorTier.query.filter_by(event_id=dummy_event.id).count() == 1
 
 
+def test_seed_event_is_not_repeated_when_only_templates_remain(db, dummy_event):
+    # An event can legitimately hold zero tiers -- every one deleted by hand,
+    # or an empty default list. Re-toggling the feature must not re-seed
+    # against its surviving templates and trip the slug constraint.
+    seed_event(dummy_event, [('Gold', 60)], DEFAULT_TEMPLATES)
+    db.session.flush()
+    for tier in SponsorTier.query.filter_by(event_id=dummy_event.id):
+        db.session.delete(tier)
+    db.session.flush()
+    seed_event(dummy_event, [('Gold', 60)], DEFAULT_TEMPLATES)
+    db.session.flush()
+    assert not SponsorTier.query.filter_by(event_id=dummy_event.id).has_rows()
+    assert SponsorTemplate.query.filter_by(event_id=dummy_event.id).count() == len(DEFAULT_TEMPLATES)
+
+
 def test_seed_event_gives_lower_tiers_fewer_fields(db, dummy_event):
     seed_event(dummy_event, [('Gold', 60), ('Silver', 40), ('Bronze', 20)], DEFAULT_TEMPLATES)
     db.session.flush()

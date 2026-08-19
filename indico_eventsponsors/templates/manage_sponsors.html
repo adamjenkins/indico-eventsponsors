@@ -1,4 +1,5 @@
 {% extends 'events/management/base.html' %}
+{% from 'eventsponsors:_shortcode.html' import copyable_shortcode, shortcode_copy_script %}
 
 {% block title %}{% trans %}Sponsors{% endtrans %}{% endblock %}
 
@@ -9,6 +10,14 @@
         <div class="i-callout warning">
             {%- trans %}This event has no sponsorship tiers yet, so nothing can be rendered. Add some under
             "Tiers and templates".{% endtrans -%}
+        </div>
+    {% endif %}
+
+    {% if not templates %}
+        <div class="i-callout warning">
+            {%- trans example='{{sponsors_…}}' %}This event has no templates, so shortcodes on this event's pages
+            are not being expanded — a {{ example }} left on a page shows up verbatim to visitors. Add a template
+            under "Tiers and templates".{% endtrans -%}
         </div>
     {% endif %}
 
@@ -25,13 +34,17 @@
                     <th>{% trans %}Tier{% endtrans %}</th>
                     <th>{% trans %}Sponsor{% endtrans %}</th>
                     <th>{% trans %}Links to{% endtrans %}</th>
+                    <th>{% trans %}Contributions{% endtrans %}</th>
                     <th>{% trans %}Active{% endtrans %}</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for sponsor in sponsors %}
-                    <tr{% if not sponsor.is_active %} style="opacity: .55;"{% endif %}>
+                    {# The anchor is what the move and save redirects point back at,
+                       so the manager lands on the row they touched rather than at
+                       the top of the list. #}
+                    <tr id="sponsor-{{ sponsor.id }}"{% if not sponsor.is_active %} style="opacity: .55;"{% endif %}>
                         <td>
                             {%- if sponsor.tier %}{{ sponsor.tier.name }} <span class="text-superfluous">({{ sponsor.tier.size }})</span>
                             {%- else %}<span class="text-error">{% trans %}No tier — never shown{% endtrans %}</span>{% endif %}
@@ -49,18 +62,26 @@
                                 <span class="text-superfluous">{{ 'campaign' if sponsor.use_campaign_url and sponsor.campaign_url else 'homepage' }}</span>
                             {%- else %}<span class="text-superfluous">{% trans %}nothing{% endtrans %}</span>{% endif %}
                         </td>
+                        <td>
+                            {%- set contribution_count = sponsor.contribution_links | rejectattr('contribution.is_deleted') | list | length -%}
+                            {%- if contribution_count %}{{ contribution_count }}
+                            {%- else %}<span class="text-superfluous">—</span>{% endif %}
+                        </td>
                         <td>{{ '✓' if sponsor.is_active else '—' }}</td>
                         <td style="white-space: nowrap;">
-                            <form method="post" style="display: inline;"
-                                  action="{{ url_for_plugin('eventsponsors.sponsor_move', sponsor.event, sponsor_id=sponsor.id, direction='up') }}">
-                                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                                <button class="i-button icon-arrow-up" type="submit" title="{% trans %}Move up{% endtrans %}"></button>
-                            </form>
-                            <form method="post" style="display: inline;"
-                                  action="{{ url_for_plugin('eventsponsors.sponsor_move', sponsor.event, sponsor_id=sponsor.id, direction='down') }}">
-                                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                                <button class="i-button icon-arrow-down" type="submit" title="{% trans %}Move down{% endtrans %}"></button>
-                            </form>
+                            {# `top`/`bottom` exist because new sponsors arrive alphabetically at
+                               position 0 -- "last alphabetically, wanted first" would otherwise be
+                               one `up` submit per row in between. #}
+                            {% for direction, icon, label in (('top', 'icon-collapse', _('Move to top')),
+                                                              ('up', 'icon-arrow-up', _('Move up')),
+                                                              ('down', 'icon-arrow-down', _('Move down')),
+                                                              ('bottom', 'icon-expand', _('Move to bottom'))) %}
+                                <form method="post" style="display: inline;"
+                                      action="{{ url_for_plugin('eventsponsors.sponsor_move', sponsor.event, sponsor_id=sponsor.id, direction=direction) }}">
+                                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                                    <button class="i-button {{ icon }}" type="submit" title="{{ label }}"></button>
+                                </form>
+                            {% endfor %}
                             <a class="i-button icon-edit" href="{{ url_for_plugin('eventsponsors.sponsor_edit', sponsor.event, sponsor_id=sponsor.id) }}"></a>
                         </td>
                     </tr>
@@ -81,8 +102,9 @@
         </p>
         <ul>
             {% for tpl in templates %}
-                <li><code>{{ tpl.shortcode }}</code> — {{ tpl.title }}{% if tpl.for_app %} <em>({% trans %}also used by the phone app{% endtrans %})</em>{% endif %}</li>
+                <li>{{ copyable_shortcode(tpl.shortcode) }} — {{ tpl.title }}{% if tpl.for_app %} <em>({% trans %}also used by the phone app{% endtrans %})</em>{% endif %}</li>
             {% endfor %}
         </ul>
+        {{ shortcode_copy_script() }}
     {% endif %}
 {% endblock %}

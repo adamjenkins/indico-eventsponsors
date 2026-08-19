@@ -133,10 +133,17 @@ class Sponsor(db.Model):
 
     @property
     def link_url(self):
-        """The address a link on this sponsor should point at, or None for no link."""
-        if self.use_campaign_url and self.campaign_url:
-            return self.campaign_url
-        return self.homepage_url or None
+        """The address a link on this sponsor should point at, or None for no link.
+
+        Only http(s) addresses count. The form validates new input, but rows
+        written before it did -- or through anything that bypasses it -- go
+        straight into an anchor's href on public pages, where any other scheme
+        is at best broken and at worst `javascript:`.
+        """
+        url = self.campaign_url if self.use_campaign_url and self.campaign_url else self.homepage_url
+        if url and url.startswith(('http://', 'https://')):
+            return url
+        return None
 
     def __repr__(self):
         return format_repr(self, 'id', 'event_id', 'tier_id', is_active=True, _text=self.name)

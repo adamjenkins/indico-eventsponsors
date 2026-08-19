@@ -1,0 +1,48 @@
+{# A shortcode the manager can click to copy. It is the one string they have to
+   carry to another page by hand, so the page hands it over instead of making
+   them select text inside a <code> element. `shortcode_copy_script` must be
+   included once by any page using this. #}
+{% macro copyable_shortcode(shortcode) -%}
+    <code class="js-copy-shortcode" style="cursor: pointer;"
+          title="{% trans %}Click to copy{% endtrans %}">{{ shortcode }}</code>
+{%- endmacro %}
+
+{% macro shortcode_copy_script() %}
+    <script>
+        // navigator.clipboard only exists on secure origins, so a plain-HTTP
+        // instance falls back to selecting the text through a scratch
+        // textarea -- clunkier, but the click still copies.
+        function copyShortcodeText(text) {
+            if (navigator.clipboard) {
+                return navigator.clipboard.writeText(text);
+            }
+            var scratch = document.createElement('textarea');
+            scratch.value = text;
+            scratch.setAttribute('readonly', '');
+            scratch.style.position = 'fixed';
+            scratch.style.opacity = '0';
+            document.body.appendChild(scratch);
+            scratch.select();
+            try {
+                document.execCommand('copy');
+            } finally {
+                document.body.removeChild(scratch);
+            }
+            return Promise.resolve();
+        }
+        document.addEventListener('click', function(evt) {
+            var el = evt.target.closest ? evt.target.closest('code.js-copy-shortcode') : null;
+            if (!el) {
+                return;
+            }
+            var shortcode = el.dataset.shortcode || el.textContent;
+            el.dataset.shortcode = shortcode;
+            copyShortcodeText(shortcode).then(function() {
+                el.textContent = {{ _('copied!') | tojson }};
+                setTimeout(function() {
+                    el.textContent = shortcode;
+                }, 1500);
+            });
+        });
+    </script>
+{% endmacro %}

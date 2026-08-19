@@ -78,10 +78,14 @@ def parse_tier_lines(text):
 def seed_event(event, tiers, templates):
     """Give `event` its own copy of the default tiers and templates.
 
-    Does nothing if the event already has tiers -- switching the feature off and
-    on again must not resurrect deleted tiers or duplicate edited ones.
+    Does nothing if the event already has tiers *or templates* -- switching the
+    feature off and on again must not resurrect deleted tiers or duplicate
+    edited ones. Templates are checked too because an event can legitimately
+    hold zero tiers, and re-seeding one would collide with its surviving
+    templates on the slug constraint.
     """
-    if SponsorTier.query.filter_by(event_id=event.id).has_rows():
+    if (SponsorTier.query.filter_by(event_id=event.id).has_rows()
+            or SponsorTemplate.query.filter_by(event_id=event.id).has_rows()):
         return
 
     created = []

@@ -5,6 +5,42 @@ All notable changes to the Event Sponsors plugin are documented here.
 ## [Unreleased]
 
 ### Added
+- **Event cloning.** Two cloners rather than one, because their costs differ:
+  *Sponsorship tiers and templates* (ticked by default) carries the
+  configuration an annual event almost always wants, while *Sponsors* carries
+  last year's sponsor list — logo files copied byte for byte, contribution
+  links following the cloned contributions — which is a separate decision. A
+  clone made with neither ticked is still seeded with the site defaults,
+  because the feature switch travels with the event and an enabled feature
+  with no templates would leave any copied `{{sponsors_…}}` shortcode raw on
+  the public pages.
+- **A live preview of each template** — in the template editor, and behind an
+  eye button on the settings page. The block exactly as a visitor sees it,
+  with the event's current sponsors and real logo widths, rendered in an
+  iframe so its inlined stylesheet stays off the management page. A template
+  that currently renders nothing says so instead of showing an empty frame.
+- **Click-to-copy shortcodes.** The shortcode is the one string a manager has
+  to carry to another page by hand, so clicking it copies it — with a
+  fallback for plain-HTTP instances, where `navigator.clipboard` does not
+  exist.
+- **Move to top and move to bottom** beside the single steps: new sponsors
+  arrive alphabetically at position 0, so "last alphabetically, wanted first"
+  was one submit per row in between. Moving or saving a sponsor now lands
+  back on its row, via an anchor, rather than at the top of the list.
+- **"Save and add another"** on a new sponsor's form, carrying the tier and
+  the active switch into the next blank form — sponsors arrive in batches
+  grouped by tier.
+- **A contributions column** in the sponsor list, and an "Attached to"
+  callout on a sponsor's page resolving the saved links to the numbers and
+  titles the manager knows the talks by.
+- **Deleting a tier asks first**, naming the ticked tiers and their sponsor
+  counts — a tier takes its row in every template with it and leaves its
+  sponsors untiered, which is too much to lose to a stray checkbox whose only
+  button says "Save tiers". The save then reports what it deleted.
+- **A callout on the sponsors page when the event has no templates**, since
+  its shortcodes are then showing up verbatim to visitors — and a note under
+  the site-wide default tiers explaining the three templates that are seeded
+  alongside them.
 - **"Display inline"** in a template's per-tier matrix: that tier's sponsors sit
   side by side and wrap onto further rows, rather than one per row. Per tier
   rather than per template on purpose — the usual arrangement is a headline tier
@@ -41,6 +77,69 @@ All notable changes to the Event Sponsors plugin are documented here.
   than inherited.
 
 ### Fixed
+- **Renaming tiers into a collision no longer loses the whole save.** The
+  unique constraint on names only ever surfaced as a 500 that rolled back
+  every rename, resize and delete on the page. What matters is the *final*
+  set of names, so the handler settles them first — case-insensitively,
+  because two tiers differing only in case is a trap rather than a feature.
+  Swapping two names in one submit works, chains of renames work (detouring
+  through a throwaway name where the flush order would trip the constraint),
+  deleting a name and re-adding it works, and a real collision reverts that
+  one row with a warning instead of failing the save.
+- **A tier created after the event's templates now renders in them.** It gets
+  a row in every existing template, holding the same defaults the template
+  editor shows for a tier without one; before, it rendered nowhere while the
+  editor showed it fully configured.
+- **The delete confirmations actually confirm.** They were inline `onsubmit`
+  handlers, which Indico's CSP silently never runs — the nonce applies to
+  script blocks, never to handler attributes — so deleting a sponsor or a
+  template was one unguarded click. They now go through core's declarative
+  `data-confirm`.
+- **Link addresses are checked twice.** The form now carries a real `URL()`
+  validator — `URLField` alone only sets `type="url"` on the input, which any
+  crafted request skips — and `link_url` returns nothing unless the address
+  is http(s), so a `javascript:` URL stored before the validator existed
+  never reaches an anchor's href on a public page.
+- **A typo in the contributions box no longer rejects the save.** The form is
+  multipart and no browser repopulates a file input, so a failed submit cost
+  whatever logos were selected. The unmatched numbers are dropped and named
+  in a warning after saving instead.
+- **A failed shortcode expansion leaves the page alone.** Flask re-raises an
+  error out of an `after_request` hook, replacing a page that was already
+  built with an error page; the raw shortcode stays, and the failure is
+  logged.
+- **An unterminated `<script>`, `<style>` or `<textarea>` no longer costs a
+  rescan of the page.** The opaque-region matcher was one backtracking
+  `.*?</tag>` regex, whose unterminated openers rescan to end-of-document —
+  unbounded CPU in a filter running on public, unauthenticated loads. It is
+  now a linear scan, and an opener with no closer makes the whole remainder
+  opaque, which is also how a browser reads it.
+- **A deleted logo's file leaves storage only after the commit.** Storage is
+  not transactional: the old order removed the file immediately while the
+  row's delete could still be rolled back by a later failure, leaving a
+  sponsor pointing at a file that is not there. The file is now queued and
+  swept once the commit has made the row's removal final; the one failure
+  mode left is a file nothing points at, which nobody ever sees.
+- **The sponsor queries no longer grow with the sponsor count.** The
+  renderable sponsors are fetched in one round trip, contribution links
+  included, and shared by every shortcode on the page — on the JSON endpoint
+  the old per-tier, per-sponsor queries multiplied by every attendee's every
+  sync. That endpoint is now cacheable for a minute, logo responses for a day
+  (a logo URL's content can never change — replacing an image is a new row
+  with a new id), and the stylesheet is read and stripped once per process.
+- **An empty larger tier no longer shrinks everyone else.** The block's scale
+  comes from the largest tier that actually renders, not the largest
+  configured: an event that has not sold its headline slot yet — the usual
+  starting state — must not draw every other logo smaller than asked for.
+- **New tiers and templates sort after their own kind.** Both took their
+  position from a count of the *tiers*, so a new template could land inside
+  the seeded order — and positions survive deletions, so even a same-table
+  count could collide with a surviving row. The next position is now the
+  maximum of the row's own table plus one.
+- **Switching the feature off and on again no longer re-seeds an event that
+  deleted all its tiers.** An event can legitimately hold zero tiers; seeding
+  is now skipped if either tiers or templates survive, where before the
+  re-seed collided with the surviving templates on the slug constraint.
 - **The inlined stylesheet no longer carries its own comments.** The block's CSS
   is injected into somebody's page rather than served as an asset, so everything
   in it is downloaded by every visitor — including the licence header the header

@@ -26,6 +26,13 @@ TEMPLATE_FIELDS = (
 #: see `SponsorTemplateTier.shows_anything`.
 PRESENTATION_FIELDS = frozenset({'linked', 'inline'})
 
+#: What a tier starts with when a template has no stored row for it yet: the
+#: matrix form's checkbox defaults for a new template, and the row written for
+#: a tier created after the event's templates were. One constant on purpose --
+#: if the form and the write path disagreed, the editor would show a default
+#: the database does not have.
+NEW_TIER_FIELDS = frozenset({'show_logo', 'show_name', 'linked'})
+
 LAYOUTS = (
     ('grid', 'Grid -- logos side by side, wrapping'),
     ('list', 'List -- one sponsor per row, logo beside the text'),

@@ -7,6 +7,19 @@
     {{ form_header(form, multipart=true) }}
     {{ form_rows(form) }}
 
+    {# The contributions box is free text, so this is the confirmation of what
+       it actually matched: the saved links, resolved to the numbers and titles
+       the manager knows the talks by. #}
+    {% set attached = sponsor.contribution_links | rejectattr('contribution.is_deleted') | sort(attribute='contribution.friendly_id') if sponsor else [] %}
+    {% if attached %}
+        <div class="i-callout" style="margin: 1em 0;">
+            {% trans %}Attached to:{% endtrans %}
+            {% for link in attached -%}
+                #{{ link.contribution.friendly_id }} {{ link.contribution.title }}{% if not loop.last %}, {% endif %}
+            {%- endfor %}
+        </div>
+    {% endif %}
+
     {% if sponsor and (sponsor.logo or sponsor.square_logo) %}
         <div class="i-callout" style="margin: 1em 0;">
             {% trans %}Currently uploaded:{% endtrans %}
@@ -19,13 +32,24 @@
 
     {% call form_footer(form) %}
         <input class="i-button big highlight" type="submit" value="{% trans %}Save{% endtrans %}">
+        {% if not sponsor %}
+            {# Sponsors arrive in batches: this saves and comes straight back to
+               a blank form, with the tier and active state carried over. #}
+            <input class="i-button big" type="submit" name="save_add_another"
+                   value="{% trans %}Save and add another{% endtrans %}">
+        {% endif %}
         <a class="i-button big" href="{{ url_for_plugin('eventsponsors.manage', event) }}">{% trans %}Back{% endtrans %}</a>
     {% endcall %}
 
     {% if sponsor %}
+        {# `data-confirm` is core's declarative confirm: its global click
+           binding shows the styled prompt and only submits on OK. (An inline
+           `onsubmit` would be dead under the CSP, whose nonce never applies
+           to handler attributes.) #}
         <form method="post" style="margin-top: 1.5em;"
               action="{{ url_for_plugin('eventsponsors.sponsor_delete', event, sponsor_id=sponsor.id) }}"
-              onsubmit="return confirm('{% trans %}Delete this sponsor?{% endtrans %}');">
+              data-confirm="{% trans %}Delete this sponsor?{% endtrans %}"
+              data-title="{% trans %}Delete sponsor{% endtrans %}">
             <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
             <button type="submit" class="i-button danger icon-remove">{% trans %}Delete sponsor{% endtrans %}</button>
         </form>

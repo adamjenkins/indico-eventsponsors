@@ -36,7 +36,7 @@ import re
 
 from flask import request
 
-from indico_eventsponsors.rendering import render_block
+from indico_eventsponsors.rendering import load_sponsors_by_tier, render_block
 
 
 #: The substring every shortcode must contain, tested before anything else.
@@ -44,8 +44,14 @@ MARKER = '{{sponsor'
 
 _SHORTCODE_RE = re.compile(r'\{\{(sponsors?_[a-z0-9_]{1,40})\}\}')
 
-#: Regions whose contents are not markup, and must be left exactly as they are.
-_OPAQUE_RE = re.compile(r'<(script|style|textarea)\b.*?</\1\s*>', re.IGNORECASE | re.DOTALL)
+#: Opens a region whose contents are not markup. The matching closer is found
+#: with a plain search from the opener onwards rather than one `.*?</\1>`
+#: regex, whose backtracking rescans to end-of-document for every unterminated
+#: opener -- unbounded CPU in a filter running on public, unauthenticated
+#: loads.
+_OPAQUE_OPEN_RE = re.compile(r'<(script|style|textarea)\b', re.IGNORECASE)
+_OPAQUE_CLOSE_RES = {tag: re.compile(rf'</{tag}\s*>', re.IGNORECASE)
+                     for tag in ('script', 'style', 'textarea')}
 
 _HEAD_END_RE = re.compile(r'</head\s*>', re.IGNORECASE)
 
@@ -58,13 +64,18 @@ def expand(html, event, *, with_styles=True):
     templates = {t.slug: t for t in event.sponsor_templates}
     if not templates:
         return html
-    state = {'styled': not with_styles}
+    # `sponsors` is one load shared by every shortcode on the page, fetched
+    # only once a known one actually appears in it.
+    state = {'styled': not with_styles, 'sponsors': None}
 
     def replace(match):
         template = templates.get(match.group(1))
         if template is None:
             return match.group(0)
-        block = render_block(event, template, with_styles=not state['styled'])
+        if state['sponsors'] is None:
+            state['sponsors'] = load_sponsors_by_tier(event)
+        block = render_block(event, template, with_styles=not state['styled'],
+                             sponsors_by_tier=state['sponsors'])
         if block:
             state['styled'] = True
         return block
@@ -87,14 +98,19 @@ def _substitute_outside_opaque(html, replace):
     that a browser will never read as markup. A `<script>` containing the string
     `</script>` inside a JavaScript string literal would end the region early,
     which at worst means a shortcode there is expanded -- the same thing that
-    happened before this existed.
+    happened before this existed. An opener with no closer at all makes the
+    whole remainder opaque, which is also how a browser reads it.
     """
     out = []
     cursor = 0
-    for opaque in _OPAQUE_RE.finditer(html):
-        out.append(_SHORTCODE_RE.sub(replace, html[cursor:opaque.start()]))
-        out.append(opaque.group(0))
-        cursor = opaque.end()
+    while (opener := _OPAQUE_OPEN_RE.search(html, cursor)) is not None:
+        out.append(_SHORTCODE_RE.sub(replace, html[cursor:opener.start()]))
+        closer = _OPAQUE_CLOSE_RES[opener.group(1).lower()].search(html, opener.end())
+        if closer is None:
+            out.append(html[opener.start():])
+            return ''.join(out)
+        out.append(html[opener.start():closer.end()])
+        cursor = closer.end()
     out.append(_SHORTCODE_RE.sub(replace, html[cursor:]))
     return ''.join(out)
 
@@ -103,7 +119,7 @@ def expand_response(response):
     """`after_request` hook. Returns `response` untouched unless it needs work."""
     from indico.modules.events import Event
 
-    from indico_eventsponsors.plugin import FEATURE_NAME
+    from indico_eventsponsors.plugin import FEATURE_NAME, EventsponsorsPlugin
 
     if (request.method != 'GET' or response.status_code != 200 or response.direct_passthrough
             or response.mimetype != 'text/html' or response.headers.get('Content-Encoding')):
@@ -117,10 +133,16 @@ def expand_response(response):
         return response
     if MARKER not in body:
         return response
-    event = Event.get(event_id, is_deleted=False)
-    if event is None or not event.has_feature(FEATURE_NAME):
-        return response
-    expanded = expand(body, event)
-    if expanded != body:
-        response.set_data(expanded)
+    try:
+        event = Event.get(event_id, is_deleted=False)
+        if event is None or not event.has_feature(FEATURE_NAME):
+            return response
+        expanded = expand(body, event)
+        if expanded != body:
+            response.set_data(expanded)
+    except Exception:
+        # Flask re-raises an error out of an `after_request` hook, replacing a
+        # page that was already built with an error page. A failed expansion
+        # must cost less than the page it failed on: the raw shortcode stays.
+        EventsponsorsPlugin.logger.exception('Could not expand sponsor shortcodes on %s', request.path)
     return response

@@ -8,13 +8,13 @@
 from flask_wtf.file import FileAllowed, FileField
 from wtforms import Form as PlainForm
 from wtforms.fields import BooleanField, IntegerField, SelectField, StringField, TextAreaField, URLField
-from wtforms.validators import DataRequired, NumberRange, Optional, ValidationError
+from wtforms.validators import URL, DataRequired, NumberRange, Optional, ValidationError
 
 from indico.web.forms.base import IndicoForm
 from indico.web.forms.widgets import SwitchWidget
 
 from indico_eventsponsors import _
-from indico_eventsponsors.models.templates import LAYOUTS, TEMPLATE_FIELDS
+from indico_eventsponsors.models.templates import LAYOUTS, NEW_TIER_FIELDS, TEMPLATE_FIELDS
 from indico_eventsponsors.models.tiers import SponsorTier
 from indico_eventsponsors.shortcodes import SLUG_RE
 
@@ -32,8 +32,11 @@ class SponsorForm(IndicoForm):
     tagline = StringField(_('One-line description'),
                           description=_('A single sentence, for places a paragraph will not fit.'))
     description = TextAreaField(_('Full description'), render_kw={'rows': 5})
-    homepage_url = URLField(_('Homepage'), [Optional()])
-    campaign_url = URLField(_('Campaign link'), [Optional()],
+    # `URL()` and not just the field type: `URLField` only sets `type="url"`
+    # on the input, which any crafted request skips, and whatever is stored
+    # here ends up in an anchor's href on public pages.
+    homepage_url = URLField(_('Homepage'), [Optional(), URL()])
+    campaign_url = URLField(_('Campaign link'), [Optional(), URL()],
                             description=_('An address for a particular campaign or offer.'))
     use_campaign_url = BooleanField(_('Link to the campaign instead of the homepage'), widget=SwitchWidget(),
                                     description=_('The homepage is kept either way, so this can be turned off '
@@ -57,18 +60,24 @@ class SponsorForm(IndicoForm):
         #: Set by `validate_contribution_ids`, so the controller stores the ids
         #: the form already resolved instead of parsing the box a second time.
         self.resolved_contribution_ids = []
+        #: Tokens in the contributions box that matched nothing; the controller
+        #: flashes them after saving.
+        self.dropped_contribution_tokens = []
         tiers = SponsorTier.query.filter_by(event_id=event.id).order_by(SponsorTier.position, SponsorTier.id).all()
         self.tier_id.choices = [(0, _('No tier'))] + [(t.id, f'{t.name} ({t.size})') for t in tiers]
 
     def validate_contribution_ids(self, field):
         from indico_eventsponsors.util import parse_contribution_ids
+
+        # A number that matches nothing must not fail the form: the form is
+        # multipart, no browser repopulates a file input, so a failed submit
+        # costs whatever logos were selected. The unmatched numbers are dropped
+        # instead, and the controller flashes them by name after saving --
+        # with twenty numbers in the box, the useful information is which one
+        # was wrong, not that one was.
         found, unknown = parse_contribution_ids(self.event, field.data)
-        if unknown:
-            # Naming them beats "invalid input": with twenty numbers in the box,
-            # the useful information is which one is wrong.
-            raise ValidationError(_('No contribution in this event matches: {numbers}')
-                                  .format(numbers=', '.join(unknown)))
         self.resolved_contribution_ids = found
+        self.dropped_contribution_tokens = unknown
 
     def validate_use_campaign_url(self, field):
         if field.data and not self.campaign_url.data:
@@ -116,7 +125,7 @@ def build_matrix_form(tiers, existing):
     for tier in tiers:
         settings = existing.get(tier.id)
         for field, label in TEMPLATE_FIELDS:
-            default = getattr(settings, field) if settings else field in ('show_logo', 'show_name', 'linked')
+            default = getattr(settings, field) if settings else field in NEW_TIER_FIELDS
             attrs[f'tier_{tier.id}_{field}'] = BooleanField(_(label), default=default)
     # A plain WTForms form, not an `IndicoForm`: its fields are rendered inside
     # the template form's own `<form>` element, so it must not carry a second

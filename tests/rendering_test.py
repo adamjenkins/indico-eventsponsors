@@ -45,6 +45,48 @@ def test_widths_are_in_proportion_to_tier_size(sponsored_event):
     assert [g['width_pct'] for g in groups] == [30, 20]
 
 
+def test_an_empty_larger_tier_does_not_shrink_the_rest(db, sponsored_event):
+    event, template, gold, _silver = sponsored_event
+    Sponsor.query.filter_by(event_id=event.id, tier_id=gold.id).delete()
+    db.session.flush()
+    groups = build_groups(event, template)
+    assert [g['tier'].name for g in groups] == ['Silver']
+    # The scale is set by the largest tier that renders, not the largest
+    # configured: an event that has not sold its headline slot yet -- the usual
+    # starting state -- must not draw every other logo smaller than asked for.
+    assert groups[0]['width_pct'] == 30
+
+
+def test_build_groups_accepts_a_preloaded_sponsor_map(sponsored_event):
+    from indico_eventsponsors.rendering import load_sponsors_by_tier
+
+    event, template, _gold, _silver = sponsored_event
+    groups = build_groups(event, template, load_sponsors_by_tier(event))
+    assert [s.name for g in groups for s in g['sponsors']] == ['Acme', 'Globex']
+
+
+def test_the_sponsor_queries_do_not_grow_with_the_sponsor_count(db, sponsored_event, count_queries):
+    event, template, gold, silver = sponsored_event
+
+    def serialise():
+        for group in build_groups(event, template):
+            for sponsor in group['sponsors']:
+                sponsor.linked_contribution_ids  # noqa: B018
+
+    serialise()  # warm the identity map, so both counted runs start equal
+    with count_queries() as count:
+        serialise()
+    baseline = count()
+    for i in range(10):
+        db.session.add(Sponsor(event_id=event.id, tier_id=(gold if i % 2 else silver).id, name=f'Sponsor {i}'))
+    db.session.flush()
+    with count_queries() as count:
+        serialise()
+    # Five times the sponsors, the same round trips: the JSON endpoint serves
+    # every attendee's every sync, so per-sponsor queries multiply twice over.
+    assert count() == baseline
+
+
 def test_a_tier_showing_nothing_is_left_out(db, sponsored_event):
     event, template, _gold, silver = sponsored_event
     settings = next(ts for ts in template.tier_settings if ts.tier_id == silver.id)
@@ -139,6 +181,36 @@ def test_scripts_and_textareas_are_not_touched(sponsored_event):
     assert 'Acme' in out
 
 
+def test_an_unterminated_script_makes_the_remainder_opaque(sponsored_event):
+    event, _template, _gold, _silver = sponsored_event
+    # A browser reads an unclosed <script> as running to the end of the
+    # document, so nothing after it is markup to expand -- and finding that out
+    # must not cost a backtracking rescan of the whole page.
+    html = '{{sponsors_full}}<p>text</p><script>var t = "{{sponsors_full}}";'
+    out = expand(html, event)
+    assert 'Acme' in out
+    assert out.endswith('<script>var t = "{{sponsors_full}}";')
+
+
+def test_a_failed_expansion_leaves_the_response_alone(app, db, dummy_event, monkeypatch):
+    from flask import Response
+
+    from indico.modules.events.features.util import set_feature_enabled
+
+    from indico_eventsponsors import shortcodes
+
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    db.session.flush()
+    monkeypatch.setattr(shortcodes, 'expand', lambda *args, **kwargs: 1 / 0)
+    body = '<p>{{sponsors_full}}</p>'
+    with app.test_request_context(f'/event/{dummy_event.id}/sponsors/data'):
+        out = shortcodes.expand_response(Response(body, mimetype='text/html'))
+    # Flask re-raises an error from an `after_request` hook, turning a finished
+    # 200 into an error page; a raw shortcode on the page beats that.
+    assert out.status_code == 200
+    assert out.get_data(as_text=True) == body
+
+
 def test_the_app_placement_defaults_to_below_the_schedule(db, dummy_event):
     from indico_eventsponsors.models.templates import SponsorTemplate
 
@@ -184,6 +256,46 @@ def test_the_inlined_stylesheet_carries_no_comments(sponsored_event):
     assert 'This file is part of' not in css
     assert '.evsp-tier' in css and 'flex' in css
     assert '/*' not in expand('{{sponsors_full}}', event)
+
+
+def test_the_stylesheet_is_read_once_per_process(sponsored_event):
+    from indico_eventsponsors.rendering import stylesheet
+
+    # A packaged asset cannot change under a running server, so re-reading and
+    # re-stripping it per response buys nothing.
+    assert stylesheet() is stylesheet()
+
+
+def test_a_tier_added_later_renders_in_existing_templates(db, sponsored_event):
+    from indico_eventsponsors.util import seed_tier_into_templates
+
+    event, template, _gold, _silver = sponsored_event
+    tier = SponsorTier(event_id=event.id, name='Community', size=20, position=2)
+    db.session.add(tier)
+    db.session.flush()
+    seed_tier_into_templates(event, tier)
+    db.session.add(Sponsor(event_id=event.id, tier_id=tier.id, name='Initech'))
+    db.session.flush()
+    # Without a `SponsorTemplateTier` row the tier would vanish from every
+    # template that predates it, while the editor showed it as configured.
+    assert 'Community' in [g['tier'].name for g in build_groups(event, template)]
+    assert 'Initech' in expand('{{sponsors_full}}', event)
+
+
+def test_a_late_tiers_stored_default_matches_the_forms(db, sponsored_event):
+    from indico_eventsponsors.models.templates import NEW_TIER_FIELDS, TEMPLATE_FIELDS
+    from indico_eventsponsors.util import seed_tier_into_templates
+
+    event, template, _gold, _silver = sponsored_event
+    tier = SponsorTier(event_id=event.id, name='Community', size=20, position=2)
+    db.session.add(tier)
+    db.session.flush()
+    seed_tier_into_templates(event, tier)
+    settings = SponsorTemplateTier.query.filter_by(template_id=template.id, tier_id=tier.id).one()
+    # The row must hold exactly what `build_matrix_form` presents for a tier
+    # without one, or the template editor would show a default that exists only
+    # on screen.
+    assert {field for field, _label in TEMPLATE_FIELDS if getattr(settings, field)} == set(NEW_TIER_FIELDS)
 
 
 def test_contribution_ids_are_read_as_friendly_ids(db, dummy_event, dummy_contribution):

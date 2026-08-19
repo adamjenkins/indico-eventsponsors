@@ -9,7 +9,7 @@ from indico.core.plugins import IndicoPluginBlueprint
 
 from indico_eventsponsors.controllers import (RHManageSettings, RHManageSponsors, RHSponsorCreate, RHSponsorDelete,
                                               RHSponsorEdit, RHSponsorLogo, RHSponsorMove, RHSponsorsData,
-                                              RHTemplateCreate, RHTemplateDelete, RHTemplateEdit)
+                                              RHTemplateCreate, RHTemplateDelete, RHTemplateEdit, RHTemplatePreview)
 
 
 # Every URL below 404s unless the event has the Sponsors feature switched on. The
@@ -25,7 +25,7 @@ blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/<int:sponsor_id>',
                        methods=('GET', 'POST'))
 blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/<int:sponsor_id>/delete', 'sponsor_delete',
                        RHSponsorDelete, methods=('POST',))
-blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/<int:sponsor_id>/move/<any(up,down):direction>',
+blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/<int:sponsor_id>/move/<any(up,down,top,bottom):direction>',
                        'sponsor_move', RHSponsorMove, methods=('POST',))
 
 blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/settings', 'settings', RHManageSettings,
@@ -36,6 +36,8 @@ blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/templates/<int:tem
                        RHTemplateEdit, methods=('GET', 'POST'))
 blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/templates/<int:template_id>/delete',
                        'template_delete', RHTemplateDelete, methods=('POST',))
+blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/templates/<int:template_id>/preview',
+                       'template_preview', RHTemplatePreview)
 
 blueprint.add_url_rule('/event/<int:event_id>/sponsors/logo/<int:logo_id>/<filename>', 'logo', RHSponsorLogo)
 blueprint.add_url_rule('/event/<int:event_id>/sponsors/data', 'data', RHSponsorsData)

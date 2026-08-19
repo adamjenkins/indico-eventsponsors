@@ -29,7 +29,10 @@ class SettingsForm(IndicoForm):
         _('Default tiers'),
         description=_('One tier per line, as "Name = size". The size is relative: a tier at 60 draws its logos '
                       'half again as wide as a tier at 40. Copied into an event the first time the feature is '
-                      'switched on there, and editable per event afterwards.'),
+                      'switched on there, and editable per event afterwards. Along with these tiers, the event '
+                      'also gets three built-in templates -- {{sponsors_full}}, {{sponsors_logoonly}}, and a '
+                      '"Phone app" one that feeds the schedule app instead of any page -- likewise its own '
+                      'copies, editable and deletable there.'),
         render_kw={'rows': 6},
     )
 
@@ -58,11 +61,25 @@ class EventsponsorsPlugin(IndicoPlugin):
     def init(self):
         super().init()
         self.connect(signals.event.get_feature_definitions, self._get_feature_definitions)
+        self.connect(signals.event_management.get_cloners, self._get_cloners)
         self.connect(signals.menu.items, self._add_management_sidemenu_item, sender='event-management-sidemenu')
         self.connect(signals.core.app_created, self._extend_app)
+        self.connect(signals.core.after_commit, self._sweep_deleted_files)
 
     def _get_feature_definitions(self, sender, **kwargs):
         return EventSponsorsFeature
+
+    def _get_cloners(self, sender, **kwargs):
+        from indico_eventsponsors.clone import SponsorsCloner, SponsorSettingsCloner
+        yield SponsorSettingsCloner
+        yield SponsorsCloner
+
+    def _sweep_deleted_files(self, sender, **kwargs):
+        # Fires on every commit, and does nothing unless this request queued a
+        # logo file for deletion -- see `util.delete_logo`, which must not
+        # touch storage until the commit has made the row's removal final.
+        from indico_eventsponsors.util import delete_queued_files
+        delete_queued_files()
 
     def _add_management_sidemenu_item(self, sender, event, **kwargs):
         if not event.can_manage(session.user) or not event.has_feature(FEATURE_NAME):
@@ -99,6 +116,10 @@ class EventSponsorsFeature(EventFeature):
         # site's default tiers and templates. Copied rather than shared: the
         # point of a default is a starting position, not a constraint, and an
         # event that edits its tiers must not change anyone else's.
-        if cloning:
-            return
+        #
+        # A clone is seeded too. The flag travels with the event whether or
+        # not the sponsor cloners were ticked, and an enabled feature with no
+        # templates leaves any copied {{sponsors_*}} shortcode raw on the
+        # public pages. When `SponsorSettingsCloner` runs it replaces this
+        # seed with the old event's own configuration.
         seed_event(event, parse_tier_lines(EventsponsorsPlugin.settings.get('default_tiers')), DEFAULT_TEMPLATES)

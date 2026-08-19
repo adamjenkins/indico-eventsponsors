@@ -67,6 +67,13 @@ starting set of templates, are copied into an event the first time the feature
 is switched on there. Copied, not shared — the point of a default is a starting
 position, and an event editing its tiers must not change anyone else's.
 
+**Cloning an event** carries the sponsor setup instead: the tiers, templates
+and per-tier choices are ticked by default in the clone dialog, while the
+sponsors themselves — logo files included — are a separate box, since last
+year's sponsor list is a separate decision. A clone made with neither ticked
+still gets the site defaults, so a shortcode copied along with a page never
+shows up raw.
+
 ## For the phone app
 
 `GET /event/<id>/sponsors/data` returns the tiers, the sponsors and the *app

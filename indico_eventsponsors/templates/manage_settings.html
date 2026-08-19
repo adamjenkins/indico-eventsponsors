@@ -1,4 +1,5 @@
 {% extends 'events/management/base.html' %}
+{% from 'eventsponsors:_shortcode.html' import copyable_shortcode, shortcode_copy_script %}
 
 {% block title %}{% trans %}Tiers and templates{% endtrans %}{% endblock %}
 
@@ -13,7 +14,14 @@
         {%- endtrans -%}
     </p>
 
-    <form method="post">
+    {# Deleting a tier takes its row in every template with it and leaves its
+       sponsors untiered -- too much to lose to a stray click on a checkbox
+       whose only button says "Save tiers", so a submit with any delete box
+       ticked confirms first, naming the tiers and their sponsor counts.
+       The confirm lives in the script block below: the page's CSP nonce never
+       applies to inline handler attributes, so an `onsubmit` would silently
+       not run -- only nonce'd script blocks execute. #}
+    <form method="post" id="tier-form">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <table class="i-table-widget">
             <thead>
@@ -30,7 +38,12 @@
                         <td><input type="text" name="name_{{ tier.id }}" value="{{ tier.name }}" required></td>
                         <td><input type="number" name="size_{{ tier.id }}" value="{{ tier.size }}" min="1" max="1000" required></td>
                         <td>{{ tier.sponsors.count() }}</td>
-                        <td><input type="checkbox" name="delete_{{ tier.id }}"></td>
+                        <td><input type="checkbox" name="delete_{{ tier.id }}"
+                                   data-tier-label="{% trans name=tier.name, count=tier.sponsors.count() -%}
+                                                        {{ name }} ({{ count }} sponsor)
+                                                    {%- pluralize -%}
+                                                        {{ name }} ({{ count }} sponsors)
+                                                    {%- endtrans %}"></td>
                     </tr>
                 {% endfor %}
                 <tr>
@@ -64,23 +77,74 @@
         <tbody>
             {% for tpl in templates %}
                 <tr>
-                    <td><code>{{ tpl.shortcode }}</code></td>
+                    <td>{{ copyable_shortcode(tpl.shortcode) }}</td>
                     <td>{{ tpl.title }}</td>
                     <td>{{ tpl.layout }}</td>
                     <td>{{ '✓' if tpl.for_app else '' }}</td>
                     <td style="white-space: nowrap;">
+                        <button type="button" class="i-button icon-eye js-template-preview"
+                                title="{% trans %}Preview{% endtrans %}"
+                                data-target="template-preview-{{ tpl.id }}"></button>
                         <a class="i-button icon-edit" href="{{ url_for_plugin('eventsponsors.template_edit', event, template_id=tpl.id) }}"></a>
+                        {# `data-confirm` is core's declarative confirm: its
+                           global click binding shows the styled prompt and
+                           only submits on OK. (An inline `onsubmit` would be
+                           dead under the CSP -- see the tiers form above.) #}
                         <form method="post" style="display: inline;"
                               action="{{ url_for_plugin('eventsponsors.template_delete', event, template_id=tpl.id) }}"
-                              onsubmit="return confirm('{% trans %}Delete this template?{% endtrans %}');">
+                              data-confirm="{% trans %}Delete this template?{% endtrans %}"
+                              data-title="{% trans %}Delete template{% endtrans %}">
                             <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
                             <button type="submit" class="i-button icon-remove"></button>
                         </form>
                     </td>
                 </tr>
+                {# The preview lives in an iframe so the block's inlined <style>
+                   cannot leak into the management page, and loads lazily so a
+                   page of templates does not render them all up front. #}
+                <tr id="template-preview-{{ tpl.id }}" hidden>
+                    <td colspan="5">
+                        <iframe data-src="{{ url_for_plugin('eventsponsors.template_preview', event, template_id=tpl.id) }}"
+                                title="{% trans title=tpl.title %}Preview of {{ title }}{% endtrans %}"
+                                style="width: 100%; height: 16em; border: 1px solid #ddd; background: white;"></iframe>
+                    </td>
+                </tr>
             {% endfor %}
         </tbody>
     </table>
+    {{ shortcode_copy_script() }}
+    <script>
+        (function() {
+            // The tiers form's question is built from whichever delete boxes
+            // are ticked, so it cannot be a static `data-confirm` string.
+            var form = document.getElementById('tier-form');
+            form.addEventListener('submit', function(evt) {
+                var ticked = Array.prototype.map.call(
+                    form.querySelectorAll('input[type=checkbox]:checked'),
+                    function(box) { return box.dataset.tierLabel; }
+                );
+                var question = {{ _('Delete these tiers? Their settings in every template are removed with them, '
+                                    'and their sponsors are left without a tier:') | tojson }};
+                if (ticked.length && !confirm(question + '\n\n' + ticked.join('\n'))) {
+                    evt.preventDefault();
+                }
+            });
+            // The preview row toggles from here rather than an inline
+            // `onclick` for the same CSP reason as the confirm above.
+            document.addEventListener('click', function(evt) {
+                var button = evt.target.closest ? evt.target.closest('button.js-template-preview') : null;
+                if (!button) {
+                    return;
+                }
+                var row = document.getElementById(button.dataset.target);
+                var frame = row.querySelector('iframe');
+                if (!frame.getAttribute('src')) {
+                    frame.src = frame.dataset.src;
+                }
+                row.hidden = !row.hidden;
+            });
+        })();
+    </script>
     <div class="toolbar" style="margin-top: 1em;">
         <a class="i-button icon-plus" href="{{ url_for_plugin('eventsponsors.template_create', event) }}">
             {%- trans %}Add template{% endtrans -%}
