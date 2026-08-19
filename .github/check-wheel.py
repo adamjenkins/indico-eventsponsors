@@ -17,6 +17,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+
 REQUIRED = (
     'indico_eventsponsors/templates/sponsors_block.html',
     'indico_eventsponsors/templates/sponsors.css',
