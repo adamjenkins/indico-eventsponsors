@@ -2,7 +2,7 @@
 
 All notable changes to the Event Sponsors plugin are documented here.
 
-## [Unreleased]
+## [0.2.0] — 2026-08-20
 
 ### Added
 - **Sponsor marks on contributions are configurable, and reach three places.**

@@ -2,7 +2,7 @@
 name = 'indico-plugin-eventsponsors'
 description = 'Sponsor records for Indico events, rendered into the site through shortcodes'
 readme = 'README.md'
-version = '0.1.0'
+version = '0.2.0'
 license = 'MIT'
 authors = [
     { name = 'Adam Jenkins' },
