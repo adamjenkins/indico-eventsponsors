@@ -1,4 +1,5 @@
 {% extends 'events/management/base.html' %}
+{% from 'forms/_form.html' import form_header, form_rows, form_footer %}
 {% from 'eventsponsors:_shortcode.html' import copyable_shortcode, shortcode_copy_script %}
 
 {% block title %}{% trans %}Tiers and templates{% endtrans %}{% endblock %}
@@ -21,7 +22,11 @@
        The confirm lives in the script block below: the page's CSP nonce never
        applies to inline handler attributes, so an `onsubmit` would silently
        not run -- only nonce'd script blocks execute. #}
-    <form method="post" id="tier-form">
+    {# An explicit action, not the document URL: an invalid marks submit re-renders
+       this page under the marks endpoint, and a tiers form that posted to "here"
+       would then send its rows to the marks handler and lose them silently. #}
+    <form method="post" id="tier-form"
+          action="{{ url_for_plugin('eventsponsors.settings', event) }}">
         <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
         <table class="i-table-widget">
             <thead>
@@ -150,4 +155,24 @@
             {%- trans %}Add template{% endtrans -%}
         </a>
     </div>
+
+    <h3 id="sponsor-marks" style="margin-top: 2.5em;">{% trans %}Sponsor marks on contributions{% endtrans %}</h3>
+    <p>
+        {%- trans -%}
+            A sponsor can be linked to particular talks, and is marked on them with its logo. That mark is the
+            same size everywhere it appears, and each of the three places it can appear can be turned off on its
+            own. These settings are the whole event's, not any one template's — the website's contribution page
+            is not drawn by a template at all.
+        {%- endtrans -%}
+    </p>
+
+    {# Its own <form> with its own endpoint. The tiers form above is read
+       straight out of `request.form` under per-tier key names, so mixing
+       these fields into that submit would put two unrelated saves behind one
+       button for no gain. #}
+    {{ form_header(mark_form, action=url_for_plugin('eventsponsors.contribution_marks', event)) }}
+    {{ form_rows(mark_form) }}
+    {% call form_footer(mark_form) %}
+        <input class="i-button big highlight" type="submit" value="{% trans %}Save marks{% endtrans %}">
+    {% endcall %}
 {% endblock %}

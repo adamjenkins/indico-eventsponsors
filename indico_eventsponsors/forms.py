@@ -7,13 +7,14 @@
 
 from flask_wtf.file import FileAllowed, FileField
 from wtforms import Form as PlainForm
-from wtforms.fields import BooleanField, IntegerField, SelectField, StringField, TextAreaField, URLField
-from wtforms.validators import URL, DataRequired, NumberRange, Optional, ValidationError
+from wtforms.fields import BooleanField, FloatField, IntegerField, SelectField, StringField, TextAreaField, URLField
+from wtforms.validators import URL, DataRequired, InputRequired, NumberRange, Optional, ValidationError
 
 from indico.web.forms.base import IndicoForm
 from indico.web.forms.widgets import SwitchWidget
 
 from indico_eventsponsors import _
+from indico_eventsponsors.defaults import DEFAULT_MARK_UNIT, DEFAULT_MARK_WIDTH, MARK_WIDTH_LIMITS, MARK_WIDTH_UNITS
 from indico_eventsponsors.models.templates import LAYOUTS, NEW_TIER_FIELDS, TEMPLATE_FIELDS
 from indico_eventsponsors.models.tiers import SponsorTier
 from indico_eventsponsors.shortcodes import SLUG_RE
@@ -112,6 +113,53 @@ class TemplateForm(IndicoForm):
     def validate_slug(self, field):
         if not SLUG_RE.match(field.data or ''):
             raise ValidationError(_('That is not a usable shortcode name.'))
+
+
+class ContributionMarkForm(IndicoForm):
+    """The event-wide sponsor marks, on the tiers and templates page.
+
+    Its own form with its own endpoint rather than more fields on the tiers
+    form: `RHManageSettings._save_tiers` reads `request.form` by hand under
+    per-tier key names, and folding a second, unrelated save into that submit
+    buys nothing but the chance of cross-talk.
+    """
+
+    contrib_mark_width = FloatField(
+        _('Mark width'), [InputRequired()], default=DEFAULT_MARK_WIDTH,
+        description=_('How wide the logo is drawn wherever a talk is marked. One width for all three places '
+                      'below; a percentage is of the space the mark sits in.'),
+        # A number input for the keypad it brings up on a phone and the arrows
+        # it brings on a desktop. No `min`/`max`: the bounds belong to the unit
+        # chosen next to it, and a pair fixed in the markup would be wrong for
+        # five of the six. `validate_contrib_mark_width` is what enforces them.
+        render_kw={'type': 'number', 'step': 'any'})
+    contrib_mark_unit = SelectField(_('Unit'), choices=[(unit, unit) for unit in MARK_WIDTH_UNITS],
+                                    default=DEFAULT_MARK_UNIT)
+    contrib_mark_on_rows = BooleanField(_("Mark talks in the phone app's schedule"), widget=SwitchWidget(),
+                                        description=_('A small logo in the corner of the talk, next to its title.'))
+    contrib_mark_on_app_detail = BooleanField(_("Show the logo on a talk's own screen in the phone app"),
+                                              widget=SwitchWidget(),
+                                              description=_('Underneath the abstract.'))
+    contrib_mark_on_web_detail = BooleanField(_("Show the logo on a contribution's page on the website"),
+                                              widget=SwitchWidget(),
+                                              description=_('Underneath the abstract, for everyone reading the '
+                                                            'event on the site rather than in the app.'))
+
+    def validate_contrib_mark_width(self, field):
+        if field.data is None:
+            # Not a number at all, and the field has already said so; a second
+            # complaint about the range would only bury the first.
+            return
+        unit = self.contrib_mark_unit.data
+        if unit not in MARK_WIDTH_LIMITS:
+            # The unit field reports an unknown unit itself. Judging the width
+            # against limits that do not apply to it would add a wrong error
+            # beside a right one.
+            return
+        low, high = MARK_WIDTH_LIMITS[unit]
+        if not low <= field.data <= high:
+            raise ValidationError(_('In {unit}, the width has to be between {low} and {high}.')
+                                  .format(unit=unit, low=low, high=high))
 
 
 def build_matrix_form(tiers, existing):

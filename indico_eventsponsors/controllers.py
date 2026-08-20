@@ -17,14 +17,15 @@ from indico.modules.events.controllers.base import RHDisplayEventBase
 from indico.modules.events.management.controllers.base import RHManageEventBase
 
 from indico_eventsponsors import _
-from indico_eventsponsors.forms import SponsorForm, TemplateForm, build_matrix_form
+from indico_eventsponsors.defaults import normalize_mark_width
+from indico_eventsponsors.forms import ContributionMarkForm, SponsorForm, TemplateForm, build_matrix_form
 from indico_eventsponsors.models.sponsors import Sponsor
 from indico_eventsponsors.models.templates import TEMPLATE_FIELDS, SponsorTemplate
 from indico_eventsponsors.models.tiers import SponsorTier
 from indico_eventsponsors.rendering import build_groups, logo_url, render_block
-from indico_eventsponsors.util import (apply_logo_fields, delete_logo, event_sponsors, event_templates, event_tiers,
-                                       format_contribution_ids, next_position, seed_tier_into_templates,
-                                       sync_contributions, sync_template_tiers)
+from indico_eventsponsors.util import (apply_logo_fields, contribution_mark_settings, delete_logo, event_sponsors,
+                                       event_templates, event_tiers, format_contribution_ids, next_position,
+                                       seed_tier_into_templates, sync_contributions, sync_template_tiers)
 from indico_eventsponsors.views import WPManageSponsors
 
 
@@ -170,12 +171,12 @@ class RHManageSettings(RHSponsorsManageBase):
     """Tiers and templates: the second page."""
 
     def _process(self):
-        tiers = event_tiers(self.event)
         if request.method == 'POST':
-            self._save_tiers(tiers)
+            self._save_tiers(event_tiers(self.event))
             return redirect(url_for_plugin('eventsponsors.settings', self.event))
-        return WPManageSponsors.render_template('manage_settings.html', self.event, tiers=tiers,
-                                                templates=event_templates(self.event))
+        # The marks form is rendered from here but submitted to
+        # `RHContributionMarks`: the page carries two independent saves.
+        return _render_settings(self, _mark_form(self.event))
 
     def _save_tiers(self, tiers):
         kept, deleted_names = [], []
@@ -302,6 +303,53 @@ def _apply_tier_changes(kept, desired):
     db.session.flush()
 
 
+class RHContributionMarks(RHSponsorsManageBase):
+    """Save how a sponsor's logo marks the talks it is linked to.
+
+    POST only. The form itself belongs to the tiers and templates page, which
+    is also where an invalid submit is re-rendered, so the manager gets the
+    field errors beside the values typed rather than a page that has quietly
+    forgotten both.
+    """
+
+    def _process_POST(self):
+        from indico_eventsponsors.plugin import EventsponsorsPlugin
+        form = ContributionMarkForm()
+        if not form.validate_on_submit():
+            return _render_settings(self, form)
+        # Clamped on the way in as well as on the way out. The form has just
+        # checked the same bounds, so this changes nothing today; it is what
+        # keeps a value that arrived some other way -- a restored backup, a
+        # future importer -- from being trusted by whatever reads it back.
+        width, unit = normalize_mark_width(form.contrib_mark_width.data, form.contrib_mark_unit.data)
+        EventsponsorsPlugin.event_settings.set_multi(self.event, {
+            'contrib_mark_width': width,
+            'contrib_mark_unit': unit,
+            'contrib_mark_on_rows': form.contrib_mark_on_rows.data,
+            'contrib_mark_on_app_detail': form.contrib_mark_on_app_detail.data,
+            'contrib_mark_on_web_detail': form.contrib_mark_on_web_detail.data,
+        })
+        flash(_('Sponsor marks saved.'), 'success')
+        # The section sits at the foot of a long page; the anchor lands the
+        # manager back on it instead of at the top of the tier table.
+        return redirect(url_for_plugin('eventsponsors.settings', self.event, _anchor='sponsor-marks'))
+
+
+def _mark_form(event):
+    """The marks form filled in from the event's settings."""
+    marks = contribution_mark_settings(event)
+    return ContributionMarkForm(contrib_mark_width=marks['width'], contrib_mark_unit=marks['unit'],
+                                contrib_mark_on_rows=marks['on_rows'],
+                                contrib_mark_on_app_detail=marks['on_app_detail'],
+                                contrib_mark_on_web_detail=marks['on_web_detail'])
+
+
+def _render_settings(rh, mark_form):
+    """The tiers and templates page, from either of the two handlers that show it."""
+    return WPManageSponsors.render_template('manage_settings.html', rh.event, tiers=event_tiers(rh.event),
+                                            templates=event_templates(rh.event), mark_form=mark_form)
+
+
 class RHTemplateCreate(RHSponsorsManageBase):
     def _process(self):
         return _edit_template(self, None)
@@ -374,13 +422,16 @@ class RHSponsorsData(RHDisplayEventBase):
             raise NotFound
         templates = event_templates(self.event)
         template = next((t for t in templates if t.for_app), None) or (templates[0] if templates else None)
+        marks = _contribution_marks_payload(self.event)
         if template is None:
-            response = jsonify(event_id=self.event.id, template=None, tiers=[], sponsors=[])
+            response = jsonify(event_id=self.event.id, template=None, tiers=[], sponsors=[],
+                               contribution_marks=marks)
         else:
             groups = build_groups(self.event, template)
             response = jsonify(
                 event_id=self.event.id,
                 event_title=self.event.title,
+                contribution_marks=marks,
                 template={'slug': template.slug, 'title': template.title, 'layout': template.layout,
                           'max_logo_pct': template.max_logo_pct,
                           'above_schedule': template.app_above_schedule},
@@ -393,6 +444,23 @@ class RHSponsorsData(RHDisplayEventBase):
         # most of the repeat load, and the app keeps its own copy anyway.
         response.cache_control.max_age = 60
         return response
+
+
+def _contribution_marks_payload(event):
+    """The mark settings as the app receives them.
+
+    `on_web_detail` is deliberately not sent: it governs the logo on Indico's
+    own contribution page, which the app neither draws nor can do anything
+    about, and a switch a client cannot honour is a switch it will eventually
+    honour wrongly.
+
+    An app build older than this key ignores it; one newer than a plugin that
+    does not send it keeps its own former behaviour. Neither needs to ask the
+    other what version it is.
+    """
+    marks = contribution_mark_settings(event)
+    return {'width': marks['width'], 'unit': marks['unit'],
+            'on_rows': marks['on_rows'], 'on_detail': marks['on_app_detail']}
 
 
 def _serialize_sponsor(sponsor, group):

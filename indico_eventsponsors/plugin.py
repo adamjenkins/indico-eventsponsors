@@ -17,7 +17,8 @@ from indico.web.menu import SideMenuItem
 
 from indico_eventsponsors import _
 from indico_eventsponsors.blueprint import blueprint
-from indico_eventsponsors.defaults import DEFAULT_TEMPLATES, DEFAULT_TIERS, parse_tier_lines, seed_event
+from indico_eventsponsors.defaults import (DEFAULT_MARK_UNIT, DEFAULT_MARK_WIDTH, DEFAULT_TEMPLATES, DEFAULT_TIERS,
+                                           parse_tier_lines, seed_event)
 
 
 #: The event feature this plugin is gated behind. Also used by `blueprint.py`.
@@ -58,6 +59,19 @@ class EventsponsorsPlugin(IndicoPlugin):
         'default_tiers': '\n'.join(f'{name} = {size}' for name, size in DEFAULT_TIERS),
     }
 
+    #: How a sponsor's logo marks the contributions it is linked to -- one
+    #: width for every surface, and a switch per surface. Event-scoped rather
+    #: than a plugin table of its own: this is configuration of one event, it
+    #: is the shape core's settings table is for, and storing it there is what
+    #: let the feature arrive without a migration.
+    default_event_settings = {
+        'contrib_mark_width': DEFAULT_MARK_WIDTH,
+        'contrib_mark_unit': DEFAULT_MARK_UNIT,
+        'contrib_mark_on_rows': True,
+        'contrib_mark_on_app_detail': True,
+        'contrib_mark_on_web_detail': True,
+    }
+
     def init(self):
         super().init()
         self.connect(signals.event.get_feature_definitions, self._get_feature_definitions)
@@ -95,6 +109,14 @@ class EventsponsorsPlugin(IndicoPlugin):
         # that keep this off every request that cannot possibly need it.
         from indico_eventsponsors.shortcodes import expand_response
         app.after_request(expand_response)
+        # The sponsor mark under a contribution's abstract is the same kind of
+        # surgery on a finished response, for the same reason: core renders the
+        # description inline with no hook anywhere near it, and a core patch
+        # cannot ship inside a plugin. Its gates are narrower still -- one
+        # endpoint -- so every other request costs it a single comparison. See
+        # `contribmarks.mark_response`.
+        from indico_eventsponsors.contribmarks import mark_response
+        app.after_request(mark_response)
 
     def get_blueprints(self):
         return blueprint

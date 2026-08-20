@@ -335,3 +335,127 @@ def test_logo_responses_are_cacheable_for_a_day(db, test_client, dummy_event, mo
     assert response.cache_control.private
     assert not response.cache_control.no_cache
     assert response.cache_control.max_age == 86400
+
+
+def test_the_data_endpoint_carries_the_contribution_marks(db, test_client, dummy_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    EventsponsorsPlugin.event_settings.set_multi(dummy_event, {
+        'contrib_mark_width': 2.5, 'contrib_mark_unit': 'rem', 'contrib_mark_on_rows': False,
+        'contrib_mark_on_app_detail': True, 'contrib_mark_on_web_detail': False,
+    })
+    db.session.flush()
+    marks = test_client.get(f'/event/{dummy_event.id}/sponsors/data').json['contribution_marks']
+    # `on_web_detail` is deliberately absent: it governs a page the app neither
+    # draws nor can do anything about, and a switch a client cannot honour is
+    # one it will eventually honour wrongly.
+    assert marks == {'width': 2.5, 'unit': 'rem', 'on_rows': False, 'on_detail': True}
+
+
+def test_the_marks_are_sent_even_when_the_event_has_no_template(db, test_client, dummy_event):
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    for template in SponsorTemplate.query.filter_by(event_id=dummy_event.id):
+        db.session.delete(template)
+    db.session.flush()
+    payload = test_client.get(f'/event/{dummy_event.id}/sponsors/data').json
+    # The degenerate branch answers a different shape of payload, and an app
+    # reading the marks out of it must not have to special-case their absence.
+    assert payload['template'] is None
+    assert payload['contribution_marks'] == {'width': 20, 'unit': '%', 'on_rows': True, 'on_detail': True}
+
+
+def test_stored_nonsense_never_reaches_the_payload(db, test_client, dummy_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    # A backup restored from an older version, or a setting written by hand:
+    # the reader settles the pair rather than trusting what is in the table.
+    EventsponsorsPlugin.event_settings.set_multi(dummy_event, {'contrib_mark_width': 500,
+                                                               'contrib_mark_unit': 'px'})
+    db.session.flush()
+    marks = test_client.get(f'/event/{dummy_event.id}/sponsors/data').json['contribution_marks']
+    assert (marks['width'], marks['unit']) == (500, 'px')
+    EventsponsorsPlugin.event_settings.set(dummy_event, 'contrib_mark_unit', 'nonsense')
+    db.session.flush()
+    marks = test_client.get(f'/event/{dummy_event.id}/sponsors/data').json['contribution_marks']
+    assert (marks['width'], marks['unit']) == (20, '%')
+
+
+def test_saving_the_marks_returns_to_the_section_that_was_edited(db, test_client, dummy_user, dummy_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    dummy_user.is_admin = True
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    db.session.flush()
+    token = _login(test_client, dummy_user)
+    response = test_client.post(f'/event/{dummy_event.id}/manage/sponsors/marks',
+                                data={'csrf_token': token, 'contrib_mark_width': '30',
+                                      'contrib_mark_unit': 'vw', 'contrib_mark_on_rows': 'y',
+                                      'contrib_mark_on_web_detail': 'y'})
+    assert response.status_code == 302
+    # The section sits at the foot of a long page; the anchor lands the manager
+    # back on it rather than at the top of the tier table.
+    assert response.location.endswith('#sponsor-marks')
+    settings = EventsponsorsPlugin.event_settings.get_all(dummy_event)
+    assert (settings['contrib_mark_width'], settings['contrib_mark_unit']) == (30, 'vw')
+    assert settings['contrib_mark_on_rows']
+    assert settings['contrib_mark_on_web_detail']
+    # A switch left off arrives as an absent field, not as a false one.
+    assert not settings['contrib_mark_on_app_detail']
+
+
+def test_an_invalid_marks_submit_keeps_the_manager_on_the_page(db, test_client, dummy_user, dummy_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    dummy_user.is_admin = True
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    db.session.flush()
+    token = _login(test_client, dummy_user)
+    response = test_client.post(f'/event/{dummy_event.id}/manage/sponsors/marks',
+                                data={'csrf_token': token, 'contrib_mark_width': '500',
+                                      'contrib_mark_unit': '%'})
+    # The page comes back with the error beside the value typed, rather than a
+    # redirect to a form that has quietly forgotten both.
+    assert response.status_code == 200
+    assert b'has to be between 1 and 100' in response.data
+    assert EventsponsorsPlugin.event_settings.get(dummy_event, 'contrib_mark_width') == 20
+
+
+def test_the_settings_page_shows_the_stored_marks(db, test_client, dummy_user, dummy_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    dummy_user.is_admin = True
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    EventsponsorsPlugin.event_settings.set_multi(dummy_event, {'contrib_mark_width': 12.5,
+                                                               'contrib_mark_unit': 'rem'})
+    db.session.flush()
+    _login(test_client, dummy_user)
+    page = test_client.get(f'/event/{dummy_event.id}/manage/sponsors/settings').get_data(as_text=True)
+    assert 'value="12.5"' in page
+    assert re.search(r'<option selected(?:="[^"]*")? value="rem">', page)
+
+
+def test_the_tiers_form_names_its_own_endpoint(db, test_client, dummy_user, dummy_event):
+    """The tiers form must not post to whatever URL the page happens to be at.
+
+    An invalid marks submit re-renders this page *under the marks endpoint*, so
+    a tiers form with no `action` would then send its rows to the marks handler:
+    the rename is dropped, the manager is shown a mark-width error they did not
+    cause, and nothing says the edit was lost.
+    """
+    dummy_user.is_admin = True
+    set_feature_enabled(dummy_event, 'eventsponsors', True)
+    db.session.flush()
+    token = _login(test_client, dummy_user)
+    settings_url = f'/event/{dummy_event.id}/manage/sponsors/settings'
+
+    for response in (test_client.get(settings_url),
+                     test_client.post(f'/event/{dummy_event.id}/manage/sponsors/marks',
+                                      data={'csrf_token': token, 'contrib_mark_width': '500',
+                                            'contrib_mark_unit': '%'})):
+        assert response.status_code == 200
+        html = response.data.decode()
+        start = html.index('id="tier-form"')
+        opening = html[html.rindex('<form', 0, start):html.index('>', start) + 1]
+        assert f'action="{settings_url}"' in opening

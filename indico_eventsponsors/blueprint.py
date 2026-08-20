@@ -7,9 +7,10 @@
 
 from indico.core.plugins import IndicoPluginBlueprint
 
-from indico_eventsponsors.controllers import (RHManageSettings, RHManageSponsors, RHSponsorCreate, RHSponsorDelete,
-                                              RHSponsorEdit, RHSponsorLogo, RHSponsorMove, RHSponsorsData,
-                                              RHTemplateCreate, RHTemplateDelete, RHTemplateEdit, RHTemplatePreview)
+from indico_eventsponsors.controllers import (RHContributionMarks, RHManageSettings, RHManageSponsors, RHSponsorCreate,
+                                              RHSponsorDelete, RHSponsorEdit, RHSponsorLogo, RHSponsorMove,
+                                              RHSponsorsData, RHTemplateCreate, RHTemplateDelete, RHTemplateEdit,
+                                              RHTemplatePreview)
 
 
 # Every URL below 404s unless the event has the Sponsors feature switched on. The
@@ -30,6 +31,10 @@ blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/<int:sponsor_id>/m
 
 blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/settings', 'settings', RHManageSettings,
                        methods=('GET', 'POST'))
+# POST only: the marks form is one of two independent saves on the settings
+# page, and it is that page -- not this rule -- that renders it.
+blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/marks', 'contribution_marks', RHContributionMarks,
+                       methods=('POST',))
 blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/templates/new', 'template_create', RHTemplateCreate,
                        methods=('GET', 'POST'))
 blueprint.add_url_rule('/event/<int:event_id>/manage/sponsors/templates/<int:template_id>', 'template_edit',

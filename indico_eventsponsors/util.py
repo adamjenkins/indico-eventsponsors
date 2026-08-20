@@ -13,6 +13,7 @@ from werkzeug.datastructures import FileStorage
 from indico.core.db import db
 from indico.core.storage.backend import get_storage
 
+from indico_eventsponsors.defaults import normalize_mark_width
 from indico_eventsponsors.models.sponsors import Sponsor, SponsorContribution, SponsorLogo
 from indico_eventsponsors.models.templates import NEW_TIER_FIELDS, TEMPLATE_FIELDS, SponsorTemplate, SponsorTemplateTier
 from indico_eventsponsors.models.tiers import SponsorTier
@@ -38,6 +39,26 @@ def event_sponsors(event):
     sponsors = Sponsor.query.filter_by(event_id=event.id).all()
     return sorted(sponsors, key=lambda s: (s.tier is None, s.tier.position if s.tier else 0,
                                            s.position, s.name.lower()))
+
+
+def contribution_mark_settings(event):
+    """The event's sponsor-mark settings, with the width already settled.
+
+    One reader for the settings form, the app payload and the website mark, so
+    that none of them has to remember that a stored width means nothing apart
+    from its unit, or that either of the two can be nonsense -- an event
+    restored from a backup of an older version, a setting written by hand.
+    """
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+    settings = EventsponsorsPlugin.event_settings.get_all(event)
+    width, unit = normalize_mark_width(settings['contrib_mark_width'], settings['contrib_mark_unit'])
+    return {
+        'width': width,
+        'unit': unit,
+        'on_rows': bool(settings['contrib_mark_on_rows']),
+        'on_app_detail': bool(settings['contrib_mark_on_app_detail']),
+        'on_web_detail': bool(settings['contrib_mark_on_web_detail']),
+    }
 
 
 def store_logo(event, file_storage):

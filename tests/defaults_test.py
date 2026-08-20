@@ -7,7 +7,8 @@
 
 import pytest
 
-from indico_eventsponsors.defaults import DEFAULT_TEMPLATES, parse_tier_lines, seed_event
+from indico_eventsponsors.defaults import (DEFAULT_TEMPLATES, MARK_WIDTH_UNITS, normalize_mark_width, parse_tier_lines,
+                                           seed_event)
 from indico_eventsponsors.models.templates import SponsorTemplate, SponsorTemplateTier
 from indico_eventsponsors.models.tiers import SponsorTier
 
@@ -77,3 +78,56 @@ def test_seed_event_gives_lower_tiers_fewer_fields(db, dummy_event):
     assert by_tier['Silver'].show_tagline
     assert not by_tier['Bronze'].show_tagline
     assert SponsorTemplateTier.query.filter_by(template_id=full.id).count() == 3
+
+
+@pytest.mark.parametrize('unit', MARK_WIDTH_UNITS)
+def test_every_offered_unit_is_kept(unit):
+    assert normalize_mark_width(10, unit) == (10, unit)
+
+
+@pytest.mark.parametrize('unit', ('nope', 'PX', 'px;', '', None, 'expression(alert(1))'))
+def test_a_unit_outside_the_allow_list_falls_back_to_the_default(unit):
+    # The pair ends up concatenated into a `style` attribute, so the allow-list
+    # is the whole of the defence -- and the width goes down with the unit,
+    # because 20 was chosen for the unit it was stored beside.
+    assert normalize_mark_width(45, unit) == (20, '%')
+
+
+@pytest.mark.parametrize(('width', 'unit', 'expected'), (
+    # Clamped to the bounds of the unit submitted, which differ per unit.
+    (500, '%', (100, '%')),
+    (0, '%', (1, '%')),
+    (5000, 'px', (1000, 'px')),
+    (0, 'px', (1, 'px')),
+    (200, 'vh', (100, 'vh')),
+    (200, 'vw', (100, 'vw')),
+    # em and rem are the two whose floor is fractional: a mark can legitimately
+    # be a tenth of a line tall, and clamping those to 1 would be clamping them
+    # to ten times what was asked for.
+    (0.05, 'em', (0.1, 'em')),
+    (0.05, 'rem', (0.1, 'rem')),
+    (2.5, 'rem', (2.5, 'rem')),
+    (99, 'em', (50, 'em')),
+    # Two decimals is as fine as a mark width ever needs to be, and rounding is
+    # what keeps float arithmetic out of the attribute.
+    (12.3456, 'em', (12.35, 'em')),
+))
+def test_a_width_is_clamped_to_the_limits_of_its_unit(width, unit, expected):
+    assert normalize_mark_width(width, unit) == expected
+
+
+@pytest.mark.parametrize('width', ('20', 20, 20.0, 20.004))
+def test_a_whole_width_stays_a_whole_number(width):
+    # `%` and `px` are very nearly every mark, and "20.0%" in a style attribute
+    # or "20.0" in the app's JSON is a value nobody typed.
+    value, _unit = normalize_mark_width(width, '%')
+    assert value == 20
+    assert isinstance(value, int)
+
+
+@pytest.mark.parametrize('width', (None, '', 'wide', 'javascript:alert(1)', object(),
+                                   float('nan'), float('inf'), float('-inf')))
+def test_an_unusable_width_falls_back_rather_than_rendering(width):
+    # A NaN needs saying separately: `min`/`max` pass one straight through
+    # instead of clamping it, so the bounds alone would not catch it.
+    assert normalize_mark_width(width, 'px') == (20, 'px')

@@ -35,8 +35,13 @@ class SponsorSettingsCloner(EventCloner):
 
     @property
     def is_available(self):
-        return (SponsorTier.query.filter_by(event_id=self.old_event.id).has_rows()
-                or SponsorTemplate.query.filter_by(event_id=self.old_event.id).has_rows())
+        from indico_eventsponsors.plugin import EventsponsorsPlugin
+        return bool(SponsorTier.query.filter_by(event_id=self.old_event.id).has_rows()
+                    or SponsorTemplate.query.filter_by(event_id=self.old_event.id).has_rows()
+                    # An event whose tiers were all deleted can still have mark
+                    # settings worth carrying over, and offering nothing to copy
+                    # when there is something is worse than the reverse.
+                    or EventsponsorsPlugin.event_settings.get_all(self.old_event, no_defaults=True))
 
     def run(self, new_event, cloners, shared_data, event_exists=False):
         # The feature flag travels with the event, so by the time cloners run
@@ -44,6 +49,7 @@ class SponsorSettingsCloner(EventCloner):
         # *site* defaults. That seed only exists as a fallback for when this
         # cloner is not selected; here it gives way to the old event's own
         # configuration.
+        from indico_eventsponsors.plugin import EventsponsorsPlugin
         for template in SponsorTemplate.query.filter_by(event_id=new_event.id):
             db.session.delete(template)
         for tier in SponsorTier.query.filter_by(event_id=new_event.id):
@@ -69,6 +75,20 @@ class SponsorSettingsCloner(EventCloner):
                     setattr(settings, field, getattr(old_settings, field))
                 db.session.add(settings)
         db.session.flush()
+
+        # The sponsor marks are event settings rather than rows of the
+        # plugin's own, so they are copied wholesale. `no_defaults` keeps the
+        # clone reading the current defaults for anything the old event never
+        # set, instead of freezing that event's copy of them into a value of
+        # its own.
+        # Cleared first, because this cloner also runs in the "import from
+        # another event" flow, where the target already exists and may carry
+        # settings of its own. Merging there produced a configuration matching
+        # neither event -- the source's unit against the target's width -- while
+        # the tiers and templates beside it were replaced outright.
+        EventsponsorsPlugin.event_settings.delete_all(new_event)
+        EventsponsorsPlugin.event_settings.set_multi(
+            new_event, EventsponsorsPlugin.event_settings.get_all(self.old_event, no_defaults=True))
         return {'tier_map': tier_map}
 
 

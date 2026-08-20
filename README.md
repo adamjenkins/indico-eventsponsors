@@ -74,12 +74,45 @@ year's sponsor list is a separate decision. A clone made with neither ticked
 still gets the site defaults, so a shortcode copied along with a page never
 shows up raw.
 
+## Marking a sponsor's talks
+
+A sponsor can be attached to contributions, and those talks then carry the
+sponsor's logo. **Tiers and templates → Sponsor marks on contributions**
+controls that: a width with a unit — `%`, `px`, `em`, `rem`, `vh` or `vw`,
+defaulting to `20%` — and three switches for the three places a mark can
+appear.
+
+The width is one number for all three, because a mark is the same gesture
+wherever it lands; the unit is there because "a fifth of the row" and "eight
+rem" are both reasonable answers and which one is right depends on the theme.
+A percentage is of the space the mark sits in — the talk row in the app, the
+content column on a contribution page.
+
+| Switch | Where |
+|---|---|
+| Talk rows in the app | The small corner mark in the schedule, agenda and search lists |
+| Talk screens in the app | Under the abstract on a talk's own screen |
+| Contribution pages on the site | Under the abstract on the Indico contribution page |
+
+The last one needs no shortcode. It is inserted into the finished page the
+same way `{{sponsors_…}}` is, since Indico has no template hook beside a
+contribution's description — so it appears on a contribution page without any
+page having to ask for it, and nowhere else.
+
+Only an **active** sponsor **in a tier** marks a talk, matching the rule the
+rendered blocks already use.
+
 ## For the phone app
 
 `GET /event/<id>/sponsors/data` returns the tiers, the sponsors and the *app
 template's* per-tier field choices already resolved onto each sponsor, so a
 client renders what the manager configured instead of reimplementing the matrix
 and drifting from it. It 404s when the feature is off.
+
+It also carries `contribution_marks` — the mark width, its unit, and whether
+the app should draw marks on talk rows and on talk screens. A client that does
+not find the key is talking to a plugin older than it is, and should keep
+whatever it did before rather than inventing a default.
 
 ## Installation
 

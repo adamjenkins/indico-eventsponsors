@@ -2,6 +2,39 @@
 
 All notable changes to the Event Sponsors plugin are documented here.
 
+## [Unreleased]
+
+### Added
+- **Sponsor marks on contributions are configurable, and reach three places.**
+  A sponsor attached to a contribution used to be marked only in the phone
+  app, at a fixed 40×20px and always on. *Tiers and templates* now carries a
+  **Sponsor marks on contributions** section: a width with a unit (`%`, `px`,
+  `em`, `rem`, `vh`, `vw`, defaulting to `20%`) and three switches — talk rows
+  in the app, talk screens in the app, and contribution pages on the site. The
+  unit is validated against an allow-list and the number clamped per unit
+  before it ever reaches a `style` attribute.
+- **The sponsor's logo appears under the abstract on a contribution page.**
+  Indico has no template hook beside a contribution's description, so this is
+  inserted into the finished response — the same mechanism `{{sponsors_…}}`
+  already uses, and for the same reason. It is placed after the whole
+  description block, and inserts nothing at all rather than guess when the page
+  does not look the way it expects: no description, more than one, or markup
+  it cannot scan cleanly.
+- `GET /event/<id>/sponsors/data` carries a `contribution_marks` object, so the
+  phone app renders the manager's choice instead of its own. A client that
+  predates the key keeps its previous behaviour.
+
+### Fixed
+- **The tiers form named the page it was on rather than its own endpoint.** An
+  invalid *Save marks* submit re-renders the settings page under the marks URL,
+  and a tier edit saved from that page then posted its rows to the marks
+  handler: the rename was dropped, and the manager was shown a mark-width error
+  they had not caused.
+- **Importing sponsor settings into an event that already had some merged them
+  instead of replacing them.** The tiers and templates beside them were
+  replaced outright, so the target could end up holding the source's unit
+  against its own width — a size neither event had ever chosen.
+
 ## [0.1.0] — 2026-08-19
 
 ### Added

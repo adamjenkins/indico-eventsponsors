@@ -125,3 +125,74 @@ def test_contribution_links_are_dropped_when_contributions_were_not_cloned(db, s
     cloned = Sponsor.query.filter_by(event_id=new_event.id, name='Acme').one()
     # Dropped, not left pointing at the old event's contribution.
     assert cloned.linked_contribution_ids == []
+
+
+def test_the_settings_cloner_copies_the_sponsor_marks(db, source_event, create_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    EventsponsorsPlugin.event_settings.set_multi(source_event, {
+        'contrib_mark_width': 2.5, 'contrib_mark_unit': 'rem', 'contrib_mark_on_rows': False,
+        'contrib_mark_on_app_detail': False, 'contrib_mark_on_web_detail': True,
+    })
+    new_event = create_event(id_=2)
+    seed_event(new_event, list(DEFAULT_TIERS), DEFAULT_TEMPLATES)
+    _clone_settings(source_event, new_event)
+    settings = EventsponsorsPlugin.event_settings.get_all(new_event)
+    # The marks are configuration, and configuration is what this cloner is
+    # for: an annual event that settled on a mark size does not want to settle
+    # on it again next year.
+    assert settings['contrib_mark_width'] == pytest.approx(2.5)
+    assert settings['contrib_mark_unit'] == 'rem'
+    assert not settings['contrib_mark_on_rows']
+    assert not settings['contrib_mark_on_app_detail']
+    assert settings['contrib_mark_on_web_detail']
+
+
+def test_a_setting_the_old_event_never_touched_is_not_frozen_into_the_clone(db, source_event, create_event,
+                                                                            monkeypatch):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    EventsponsorsPlugin.event_settings.set(source_event, 'contrib_mark_unit', 'px')
+    new_event = create_event(id_=2)
+    _clone_settings(source_event, new_event)
+    # Only the one key was ever stored, so the clone keeps reading the current
+    # default for the width rather than freezing the old event's copy of it.
+    assert set(EventsponsorsPlugin.event_settings.get_all(new_event, no_defaults=True)) == {'contrib_mark_unit'}
+    monkeypatch.setitem(EventsponsorsPlugin.default_event_settings, 'contrib_mark_width', 35)
+    assert EventsponsorsPlugin.event_settings.get(new_event, 'contrib_mark_width') == 35
+
+
+def test_the_cloner_is_offered_for_an_event_that_has_only_mark_settings(db, create_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    event = create_event(id_=2)
+    # No tiers, no templates: every one deleted by hand, or an empty default
+    # list. Offering nothing to copy when there is something to copy is worse
+    # than the reverse.
+    assert not SponsorSettingsCloner(event).is_available
+    EventsponsorsPlugin.event_settings.set(event, 'contrib_mark_width', 40)
+    assert SponsorSettingsCloner(event).is_available
+
+
+def test_importing_into_an_event_replaces_its_own_mark_settings(db, source_event, create_event):
+    from indico_eventsponsors.plugin import EventsponsorsPlugin
+
+    # This cloner has no `new_event_only`, so it also runs in the "import from
+    # another event" flow, where the target already exists and may be
+    # configured. The tiers and templates beside these settings are replaced
+    # outright there; a merge left the target holding the source's unit against
+    # its own width -- a size neither event had ever chosen.
+    EventsponsorsPlugin.event_settings.set(source_event, 'contrib_mark_unit', 'px')
+    target = create_event(id_=2)
+    seed_event(target, list(DEFAULT_TIERS), DEFAULT_TEMPLATES)
+    EventsponsorsPlugin.event_settings.set_multi(target, {
+        'contrib_mark_width': 60, 'contrib_mark_on_web_detail': False,
+    })
+    _clone_settings(source_event, target)
+    stored = EventsponsorsPlugin.event_settings.get_all(target, no_defaults=True)
+    assert set(stored) == {'contrib_mark_unit'}
+    settings = EventsponsorsPlugin.event_settings.get_all(target)
+    assert settings['contrib_mark_unit'] == 'px'
+    # Back to the defaults rather than the target's own leftovers.
+    assert settings['contrib_mark_width'] == EventsponsorsPlugin.default_event_settings['contrib_mark_width']
+    assert settings['contrib_mark_on_web_detail']
